@@ -15,10 +15,10 @@ import {
   Partials
 } from 'discord.js';
 
-const token = process.env.DISCORD_BOT_TOKEN;
+const token = process.env.DISCORD_BOT_TOKEN?.trim().replace(/^["']|["']$/g, '');
 
 if (!token) {
-  throw new Error('DISCORD_BOT_TOKEN is missing in .env');
+  throw new Error('DISCORD_BOT_TOKEN is missing in environment variables');
 }
 
 // User profile interface for balance and inventory management
@@ -1470,4 +1470,5 @@ http.createServer((req, res) => {
   console.log(`🌍 HTTP server is listening on port ${port}`);
 });
 
+// Trigger auto-deployment on Render
 client.login(token);
