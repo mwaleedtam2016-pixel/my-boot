@@ -58,7 +58,7 @@ interface UserProfile {
     train: number;
     stadium: number;
     company: number;
-    ducks: number;
+    robots: number;
   };
 }
 
@@ -116,7 +116,7 @@ function getUserProfile(userId: string): UserProfile {
         train: 0,
         stadium: 0,
         company: 0,
-        ducks: 0,
+        robots: 0,
       },
     });
   }
@@ -260,10 +260,10 @@ const marketItems: MarketItem[] = [
     lastPrice: 3000000,
   },
   {
-    id: "ducks",
-    name: "بطات",
-    nameEn: "Ducks",
-    emoji: "🦆",
+    id: "robots",
+    name: "روبوتات",
+    nameEn: "Robots",
+    emoji: "🤖",
     basePrice: 40000,
     minPrice: 30000,
     maxPrice: 50000,
