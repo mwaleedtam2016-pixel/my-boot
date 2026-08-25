@@ -944,7 +944,7 @@ async function handleWheelCommand(target: any) {
     activeGames.delete(userId);
   });
 
-  collector.on("end", async (_, reason) => {
+  collector.on("end", async (_: any, reason: any) => {
     if (reason === "time" && !gameEnded) {
       activeGames.delete(userId);
       const timeoutContent = buildWheelDisplay(
