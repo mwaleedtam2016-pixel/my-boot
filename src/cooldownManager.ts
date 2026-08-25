@@ -2,6 +2,7 @@ import { EmbedBuilder, CommandInteraction, Message } from "discord.js";
 
 // Cooldown durations in milliseconds for each command
 export const COMMAND_COOLDOWNS: Record<string, number> = {
+  wheel: 4 * 60 * 1000,     // عجلة - 4 دقائق
   invest: 5 * 60 * 1000,    // استثمار - 5 دقائق
   buy: 3 * 60 * 1000,       // شراء - 3 دقائق
   sell: 3 * 60 * 1000,      // بيع - 3 دقائق
@@ -13,10 +14,15 @@ export const COMMAND_COOLDOWNS: Record<string, number> = {
   button: 6 * 60 * 1000,    // زر - 6 دقائق
   riddle: 7 * 60 * 1000,    // لغز - 7 دقائق
   game: 5 * 60 * 1000,      // لعبه - 5 دقائق
+  robbery: 5 * 60 * 1000,   // نهب - 5 دقائق
+  shield: 3 * 60 * 1000,    // حماية - 3 دقائق
+  assets: 1 * 60 * 1000,    // ممتلكات - 1 دقيقة
+  prices: 1 * 60 * 1000,    // أسعار - 1 دقيقة
 };
 
 // Arabic display names for formatting messages
 export const COMMAND_ARABIC_NAMES: Record<string, string> = {
+  wheel: "عجلة",
   invest: "استثمار",
   buy: "شراء",
   sell: "بيع",
@@ -28,6 +34,10 @@ export const COMMAND_ARABIC_NAMES: Record<string, string> = {
   button: "زر",
   riddle: "لغز",
   game: "لعبه",
+  robbery: "نهب",
+  shield: "حماية",
+  assets: "ممتلكات",
+  prices: "أسعار",
 };
 
 /**

@@ -48,6 +48,7 @@ let botLanguage = loadLanguage();
 interface UserProfile {
   wallet: number;
   bank: number;
+  shieldUntil?: number;
   inventory: {
     [key: string]: number;
     land: number;
@@ -59,6 +60,10 @@ interface UserProfile {
     stadium: number;
     company: number;
     robots: number;
+    island: number;
+    house: number;
+    ship: number;
+    program: number;
   };
 }
 
@@ -107,6 +112,7 @@ function getUserProfile(userId: string): UserProfile {
     userProfiles.set(userId, {
       wallet: 0,
       bank: 0,
+      shieldUntil: 0,
       inventory: {
         land: 0,
         stock: 0,
@@ -117,6 +123,10 @@ function getUserProfile(userId: string): UserProfile {
         stadium: 0,
         company: 0,
         robots: 0,
+        island: 0,
+        house: 0,
+        ship: 0,
+        program: 0,
       },
     });
   }
@@ -126,6 +136,12 @@ getUserProfile;
 const activeSessions = new Set<string>();
 const activeGames = new Set<string>();
 const COMMAND_KEY_MAP: Record<string, string> = {
+  "عجلة": "wheel",
+  "عجله": "wheel",
+  "wheel": "wheel",
+  "عاجل": "wheel",
+  "ajil": "wheel",
+  "خبر عاجل": "wheel",
   "استثمار": "invest",
   "invest": "invest",
   "شراء": "buy",
@@ -148,6 +164,18 @@ const COMMAND_KEY_MAP: Record<string, string> = {
   "riddle": "riddle",
   "لعبه": "game",
   "لعبة": "game",
+  "نهب": "robbery",
+  "robbery": "robbery",
+  "حماية": "shield",
+  "shield": "shield",
+  "ممتلكات": "assets",
+  "assets": "assets",
+  "أسعار": "prices",
+  "اسعار": "prices",
+  "سوق": "prices",
+  "متجر": "prices",
+  "استفسار": "prices",
+  "prices": "prices",
 };
 
 async function checkCooldown(
@@ -171,7 +199,7 @@ const marketItems: MarketItem[] = [
     basePrice: 435000,
     minPrice: 170000,
     maxPrice: 700000,
-    maxInventory: 50,
+    maxInventory: 100,
     currentPrice: 435000,
     lastPrice: 435000,
   },
@@ -195,7 +223,7 @@ const marketItems: MarketItem[] = [
     basePrice: 115000,
     minPrice: 60000,
     maxPrice: 170000,
-    maxInventory: 60,
+    maxInventory: 95,
     currentPrice: 115000,
     lastPrice: 115000,
   },
@@ -207,7 +235,7 @@ const marketItems: MarketItem[] = [
     basePrice: 246968,
     minPrice: 95761,
     maxPrice: 398176,
-    maxInventory: 30,
+    maxInventory: 100,
     currentPrice: 246968,
     lastPrice: 246968,
   },
@@ -219,7 +247,7 @@ const marketItems: MarketItem[] = [
     basePrice: 46109,
     minPrice: 15837,
     maxPrice: 76381,
-    maxInventory: 70,
+    maxInventory: 50,
     currentPrice: 46109,
     lastPrice: 46109,
   },
@@ -255,7 +283,7 @@ const marketItems: MarketItem[] = [
     basePrice: 3000000,
     minPrice: 1000000,
     maxPrice: 5000000,
-    maxInventory: 20,
+    maxInventory: 4,
     currentPrice: 3000000,
     lastPrice: 3000000,
   },
@@ -264,6 +292,54 @@ const marketItems: MarketItem[] = [
     name: "روبوتات",
     nameEn: "Robots",
     emoji: "🤖",
+    basePrice: 40000,
+    minPrice: 30000,
+    maxPrice: 50000,
+    maxInventory: 55,
+    currentPrice: 40000,
+    lastPrice: 40000,
+  },
+  {
+    id: "island",
+    name: "جزر",
+    nameEn: "Islands",
+    emoji: "🏝️",
+    basePrice: 3000000,
+    minPrice: 1000000,
+    maxPrice: 5000000,
+    maxInventory: 1,
+    currentPrice: 3000000,
+    lastPrice: 3000000,
+  },
+  {
+    id: "house",
+    name: "بيوت",
+    nameEn: "Houses",
+    emoji: "🏠",
+    basePrice: 750000,
+    minPrice: 500000,
+    maxPrice: 1000000,
+    maxInventory: 20,
+    currentPrice: 750000,
+    lastPrice: 750000,
+  },
+  {
+    id: "ship",
+    name: "سفن",
+    nameEn: "Ships",
+    emoji: "🚢",
+    basePrice: 600000,
+    minPrice: 200000,
+    maxPrice: 1000000,
+    maxInventory: 100,
+    currentPrice: 600000,
+    lastPrice: 600000,
+  },
+  {
+    id: "program",
+    name: "برامج",
+    nameEn: "Programs",
+    emoji: "💻",
     basePrice: 40000,
     minPrice: 30000,
     maxPrice: 50000,
@@ -553,6 +629,14 @@ client.once("ready", async () => {
         ],
       },
       {
+        name: "wheel",
+        description: "عجلة الحظ في Fire Bank - أدر العجلة لربح الجوائز المالية!",
+      },
+      {
+        name: "ajil",
+        description: "عجلة الحظ في Fire Bank - أدر العجلة لربح الجوائز المالية!",
+      },
+      {
         name: "riddle",
         description: "بدء لعبة اللغز من الذكاء الاصطناعي للفوز بمكافأة خيالية",
       },
@@ -628,6 +712,46 @@ client.once("ready", async () => {
         name: "time",
         description: "عرض حالات وأوقات الانتظار لتبريد الأوامر",
       },
+      {
+        name: "add_money",
+        description: "إضافة مبلغ مالي إلى محفظة عضو (بحد أقصى 1 تريليون $)",
+        options: [
+          {
+            name: "user",
+            description: "العضو المراد إضافة المبلغ له",
+            type: 6,
+            required: true,
+          },
+          {
+            name: "money",
+            description: "المبلغ المراد إضافته (بحد أقصى 1 تريليون $)",
+            type: 10,
+            min_value: 1,
+            max_value: 1000000000000,
+            required: true,
+          },
+        ],
+      },
+      {
+        name: "got",
+        description: "إضافة مبلغ مالي إلى محفظة عضو (بحد أقصى 1 تريليون $)",
+        options: [
+          {
+            name: "user",
+            description: "العضو المراد إضافة المبلغ له",
+            type: 6,
+            required: true,
+          },
+          {
+            name: "money",
+            description: "المبلغ المراد إضافته (بحد أقصى 1 تريليون $)",
+            type: 10,
+            min_value: 1,
+            max_value: 1000000000000,
+            required: true,
+          },
+        ],
+      },
     ];
 
     await client.application?.commands.set(allSlashCommands);
@@ -644,9 +768,214 @@ client.once("ready", async () => {
 client.on("guildCreate", async (guild) => {
   await ensureGuildEmojis(guild);
 });
+
+interface WheelPrize {
+  name: string;
+  amount: number;
+  weight: number;
+  tier: "low" | "medium" | "high";
+}
+
+const WHEEL_PRIZES: WheelPrize[] = [
+  { name: "0 دولار", amount: 0, weight: 15, tier: "low" },
+  { name: "10 دولار", amount: 10, weight: 20, tier: "low" },
+  { name: "50 دولار", amount: 50, weight: 20, tier: "low" },
+  { name: "100 دولار", amount: 100, weight: 18, tier: "medium" },
+  { name: "1,000 دولار", amount: 1000, weight: 12, tier: "medium" },
+  { name: "2,000 دولار", amount: 2000, weight: 7, tier: "medium" },
+  { name: "3,000 دولار", amount: 3000, weight: 4, tier: "high" },
+  { name: "10,000 دولار", amount: 10000, weight: 2.5, tier: "high" },
+  { name: "20,000 دولار", amount: 20000, weight: 1, tier: "high" },
+  { name: "40,000 دولار", amount: 40000, weight: 0.5, tier: "high" },
+];
+
+function pickWeightedPrize(): WheelPrize {
+  const totalWeight = WHEEL_PRIZES.reduce((acc, p) => acc + p.weight, 0);
+  let random = Math.random() * totalWeight;
+  for (const prize of WHEEL_PRIZES) {
+    if (random < prize.weight) {
+      return prize;
+    }
+    random -= prize.weight;
+  }
+  return WHEEL_PRIZES[0];
+}
+
+function buildWheelDisplay(prizeText: string, footerText: string) {
+  return [
+    `امر "عجلة" 🎡 عجلة الحظ: جاهزة للحظ`,
+    ``,
+    `      │`,
+    `      │`,
+    `      │`,
+    `      │`,
+    `  ${prizeText}`,
+    `      │`,
+    `      │`,
+    `      │`,
+    `      │`,
+    ``,
+    `${footerText}`,
+  ].join("\n");
+}
+
+async function handleWheelCommand(target: any) {
+  const user = target.author || target.user;
+  const userId = user.id;
+
+  if (activeGames.has(userId) || activeSessions.has(userId)) {
+    const msg = "⚠️ **لديك عملية أو لعبة معلقة بالفعل!** يرجى إتمامها أو انتظار انتهائها أولاً.";
+    if (target.reply) {
+      if (target.deferred || target.replied) {
+        await target.followUp({ content: msg, ephemeral: true });
+      } else {
+        await target.reply({ content: msg, ephemeral: target.isChatInputCommand?.() ? true : undefined });
+      }
+    }
+    return;
+  }
+
+  activeGames.add(userId);
+
+  const initialContent = buildWheelDisplay(
+    "0",
+    "شو راح يكون حظك يا حلو"
+  );
+
+  const spinButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("spin_wheel_action")
+      .setLabel("🎡 لف العجلة")
+      .setStyle(ButtonStyle.Success)
+  );
+
+  let responseMsg: any;
+  if (target.isChatInputCommand?.()) {
+    responseMsg = await target.reply({
+      content: initialContent,
+      components: [spinButton],
+      fetchReply: true,
+    });
+  } else {
+    responseMsg = await target.reply({
+      content: initialContent,
+      components: [spinButton],
+    });
+  }
+
+  const filter = (i: any) => i.customId === "spin_wheel_action" && i.user.id === userId;
+  const collector = responseMsg.createMessageComponentCollector({
+    filter,
+    time: 30000,
+  });
+
+  let gameEnded = false;
+
+  collector.on("collect", async (interaction: any) => {
+    if (!interaction.isButton()) return;
+    gameEnded = true;
+    collector.stop("spun");
+
+    const winningPrize = pickWeightedPrize();
+    const profile = getUserProfile(userId);
+
+    const disabledSpinBtn = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("spin_wheel_action")
+        .setLabel("🎡 جاري دوران العجلة...")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(true)
+    );
+
+    await interaction.update({ components: [disabledSpinBtn] });
+
+    const animPrizes = [
+      "✨ 1,000 دولار ✨",
+      "✨ 50 دولار ✨",
+      "✨ 10,000 دولار ✨",
+      "✨ 10 دولار ✨",
+      "✨ 40,000 دولار ✨",
+    ];
+
+    for (let f = 0; f < animPrizes.length; f++) {
+      const frameContent = buildWheelDisplay(
+        animPrizes[f],
+        "شو راح يكون حظك يا حلو"
+      );
+      await responseMsg.edit({ content: frameContent }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 250));
+    }
+
+    let footerPhrase = "حظك نحس.";
+    if (winningPrize.tier === "medium") {
+      footerPhrase = "حظك مش حلو قوي.";
+    } else if (winningPrize.tier === "high") {
+      footerPhrase = "حظك حلو!";
+    }
+
+    profile.wallet += winningPrize.amount;
+
+    const finalContent = buildWheelDisplay(
+      `🎉 **${winningPrize.name}** 🎉`,
+      footerPhrase
+    );
+
+    const finalDisabledBtn = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("spin_wheel_action")
+        .setLabel(`🏆 تم الربح: ${winningPrize.name}`)
+        .setStyle(
+          winningPrize.tier === "high"
+            ? ButtonStyle.Success
+            : winningPrize.tier === "medium"
+            ? ButtonStyle.Primary
+            : ButtonStyle.Secondary
+        )
+        .setDisabled(true)
+    );
+
+    await responseMsg
+      .edit({
+        content: finalContent,
+        components: [finalDisabledBtn],
+      })
+      .catch(() => {});
+
+    activeGames.delete(userId);
+  });
+
+  collector.on("end", async (_, reason) => {
+    if (reason === "time" && !gameEnded) {
+      activeGames.delete(userId);
+      const timeoutContent = buildWheelDisplay(
+        "❌ انتهى وقت الانتظار",
+        "لم يتم لف العجلة."
+      );
+      const timeoutBtn = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId("spin_wheel_action")
+          .setLabel("⏱️ انتهت المهلة")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true)
+      );
+      await responseMsg
+        .edit({
+          content: timeoutContent,
+          components: [timeoutBtn],
+        })
+        .catch(() => {});
+    }
+  });
+}
+
 client.on("interactionCreate", async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === "wheel" || interaction.commandName === "ajil") {
+      if (!(await checkCooldown(interaction.user.id, "عجلة", interaction))) return;
+      await handleWheelCommand(interaction);
+      return;
+    }
     if (
       interaction.commandName === "abb-channel" ||
       interaction.commandName === "cancel-room" ||
@@ -718,6 +1047,85 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       }
+    }
+
+    if (
+      interaction.commandName === "add_money" ||
+      interaction.commandName === "got"
+    ) {
+      const isConfigOwner =
+        interaction.user.id === interaction.guild?.ownerId ||
+        (interaction.memberPermissions &&
+          interaction.memberPermissions.has("Administrator"));
+      if (!isConfigOwner) {
+        await interaction.reply({
+          content:
+            "❌ **هذا الأمر مخصص لمدراء السيرفر فقط!** / ❌ **This command is for server administrators only!**",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const targetUser = interaction.options.getUser("user");
+      const amount =
+        interaction.options.getNumber("money") ||
+        interaction.options.getInteger("money");
+
+      if (!targetUser) {
+        await interaction.reply({
+          content: "❌ الرجاء تحديد العضو المراد إضافة المبلغ له.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      if (targetUser.bot) {
+        await interaction.reply({
+          content: "❌ لا يمكنك إضافة أموال إلى بوت!",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      if (!amount || amount <= 0) {
+        await interaction.reply({
+          content: "❌ الرجاء إدخال مبلغ مالي صحيح وأكبر من الصفر.",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const maxLimit = 1000000000000;
+      if (amount > maxLimit) {
+        await interaction.reply({
+          content:
+            "❌ **الحد الأقصى المسموح بإضافته هو 1 تريليون $ (1,000,000,000,000 $).**",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const targetProfile = getUserProfile(targetUser.id);
+      targetProfile.wallet += amount;
+
+      const embed = new EmbedBuilder()
+        .setColor(65280)
+        .setAuthor({
+          name: interaction.user.username,
+          iconURL: interaction.user.displayAvatarURL(),
+        })
+        .setTitle("💰 تم إضافة الأموال بنجاح!")
+        .setDescription(
+          [
+            `قام <@${interaction.user.id}> بإضافة مبلغ **${amount.toLocaleString("en-US")} $** إلى محفظة <@${targetUser.id}>.`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `👛 **رصيد محفظة <@${targetUser.id}> الجديد:** \`${targetProfile.wallet.toLocaleString("en-US")} $\``,
+          ].join("\n"),
+        )
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+      return;
     }
   } catch (err) {
     console.error("Error in interactionCreate:", err);
@@ -816,6 +1224,87 @@ client.on("messageCreate", async (message) => {
     }
     console.log(`Received: "${content}"`);
     const lowerTrimmed = content.toLowerCase().trim();
+
+    if (
+      content.startsWith("got") ||
+      content.startsWith("add_money") ||
+      content.startsWith("/got") ||
+      content.startsWith("/add_money")
+    ) {
+      const isConfigOwner =
+        message.author.id === message.guild.ownerId ||
+        (message.member?.permissions &&
+          message.member.permissions.has("Administrator"));
+      if (!isConfigOwner) {
+        await message.reply("❌ **هذا الأمر مخصص لمدراء السيرفر فقط!**");
+        return;
+      }
+
+      const match = content.match(
+        /^(?:\/)?(?:got|add_money)\s+(<@!?\d+>)\s+(\d+)$/,
+      );
+      if (!match) {
+        await message.reply(
+          "⚠️ **طريقة كتابة الأمر:** `got` `@العضو` `المبلغ`\n*(مثال: `got @العضو 5000`)*",
+        );
+        return;
+      }
+
+      const victimId = match[1].replace(/[<@!>]/g, "");
+      const amount = parseInt(match[2], 10);
+
+      const targetUser =
+        message.mentions.users.get(victimId) ||
+        (await client.users.fetch(victimId).catch(() => null));
+      if (!targetUser) {
+        await message.reply("❌ لم يتم العثور على العضو المحدد.");
+        return;
+      }
+
+      if (targetUser.bot) {
+        await message.reply("❌ لا يمكنك إضافة أموال إلى بوت!");
+        return;
+      }
+
+      if (isNaN(amount) || amount <= 0) {
+        await message.reply("❌ الرجاء إدخال مبلغ مالي صحيح وأكبر من الصفر.");
+        return;
+      }
+
+      const maxLimit = 1000000000000;
+      if (amount > maxLimit) {
+        await message.reply(
+          "❌ **الحد الأقصى المسموح بإضافته هو 1 تريليون $ (1,000,000,000,000 $).**",
+        );
+        return;
+      }
+
+      const targetProfile = getUserProfile(victimId);
+      targetProfile.wallet += amount;
+
+      const guildIconUrl =
+        message.guild.iconURL({ size: 256 }) ||
+        client.user?.displayAvatarURL({ size: 256 });
+      const embed = new EmbedBuilder()
+        .setColor(65280)
+        .setAuthor({
+          name: message.author.username,
+          iconURL: message.author.displayAvatarURL(),
+        })
+        .setTitle("💰 تم إضافة الأموال بنجاح!")
+        .setDescription(
+          [
+            `قام <@${message.author.id}> بإضافة مبلغ **${amount.toLocaleString("en-US")} $** إلى محفظة <@${victimId}>.`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `👛 **رصيد محفظة <@${victimId}> الجديد:** \`${targetProfile.wallet.toLocaleString("en-US")} $\``,
+          ].join("\n"),
+        )
+        .setTimestamp();
+      if (guildIconUrl) embed.setThumbnail(guildIconUrl);
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
     if (
       lowerTrimmed === "لغة" ||
       lowerTrimmed === "لغه" ||
@@ -1525,6 +2014,9 @@ client.on("messageCreate", async (message) => {
         { name: "رياضيات", key: "رياضيات" },
         { name: "لغز", key: "لغز" },
         { name: "لعبه", key: "game" },
+        { name: "نهب", key: "نهب" },
+        { name: "حماية", key: "حماية" },
+        { name: "ممتلكات", key: "ممتلكات" },
       ];
       const lines = [];
       for (const cmd of commandsList) {
@@ -1563,8 +2055,10 @@ client.on("messageCreate", async (message) => {
       content === "أسعار" ||
       content === "سوق" ||
       content === "متجر" ||
+      content === "استفسار" ||
       lowerContent === "prices" ||
-      lowerContent === "market"
+      lowerContent === "market" ||
+      lowerContent === "inquiry"
     ) {
       const isEn = botLanguage === "en";
       const embed = getMarketEmbed(
@@ -1575,15 +2069,15 @@ client.on("messageCreate", async (message) => {
       );
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("prices_info_select")
-        .setPlaceholder(isEn ? "Prices Info" : "معلومات الاسعار")
+        .setPlaceholder(isEn ? "Price Inquiry" : "استفسار عن أسعار المنتجات")
         .addOptions(
           marketItems.map((item) => ({
             label: isEn ? item.nameEn : item.name,
             value: item.id,
             emoji: item.emoji,
             description: isEn
-              ? `Price details for ${item.nameEn}`
-              : `تفاصيل أسعار ${item.name}`,
+              ? `Price inquiry for ${item.nameEn}`
+              : `استفسار عن أسعار ${item.name}`,
           })),
         );
       const row = new ActionRowBuilder<any>().addComponents(selectMenu);
@@ -1624,6 +2118,7 @@ client.on("messageCreate", async (message) => {
                   `• **Base Price:** \`${item.basePrice.toLocaleString("en-US")} $\``,
                   `• **Min Price:** \`${item.minPrice.toLocaleString("en-US")} $\``,
                   `• **Max Price:** \`${item.maxPrice.toLocaleString("en-US")} $\``,
+                  `• **Max Purchase Limit:** \`${item.maxInventory.toLocaleString("en-US")} items\``,
                 ].join("\n")
               : [
                   `• **السعر الحالي:** \`${item.currentPrice.toLocaleString()} $\` (${trend})`,
@@ -1631,6 +2126,7 @@ client.on("messageCreate", async (message) => {
                   `• **السعر الأساسي:** \`${item.basePrice.toLocaleString()} $\``,
                   `• **أدنى سعر:** \`${item.minPrice.toLocaleString()} $\``,
                   `• **أعلى سعر:** \`${item.maxPrice.toLocaleString()} $\``,
+                  `• **الحد الأقصى للشراء:** \`${item.maxInventory.toLocaleString()} حبة\``,
                 ].join("\n"),
           )
           .setTimestamp();
@@ -1640,7 +2136,7 @@ client.on("messageCreate", async (message) => {
         const disabledMenu = new StringSelectMenuBuilder()
           .setCustomId("prices_info_select_disabled")
           .setPlaceholder(
-            isEn ? "Prices Info (Session Ended)" : "معلومات الاسعار (انتهت الجلسة)",
+            isEn ? "Price Inquiry (Session Ended)" : "استفسار عن الأسعار (انتهت الجلسة)",
           )
           .setDisabled(true)
           .addOptions({
@@ -1654,6 +2150,359 @@ client.on("messageCreate", async (message) => {
           await replyMsg.edit({ components: [disabledRow] });
         } catch (err) {}
       });
+      return;
+    }
+    if (
+      content === "حماية" ||
+      content === "درع" ||
+      content.startsWith("حماية") ||
+      content.startsWith("درع")
+    ) {
+      if (!(await checkCooldown(message.author.id, "حماية", message))) return;
+
+      const guildIconUrl =
+        message.guild.iconURL({ size: 256 }) ||
+        client.user?.displayAvatarURL({ size: 256 });
+
+      const initialEmbed = new EmbedBuilder()
+        .setColor(2829617)
+        .setAuthor({
+          name: message.author.username,
+          iconURL: message.author.displayAvatarURL(),
+        })
+        .setTitle("🛡️ شراء درع الحماية من النهب")
+        .setDescription(
+          [
+            `اختر مدة الحماية المطلوبة من القائمة بالأسفل لحماية محفظتك من حوادث النهب والسرقة:`,
+            ``,
+            `• ⏱️ **دقيقة:** \`50,000 $\``,
+            `• ⏰ **ساعة:** \`100,000 $\``,
+            `• 📅 **يوم:** \`500,000 $\` (نصف مليون)`,
+            `• 🗓️ **شهر:** \`1,000,000 $\` (مليون)`,
+          ].join("\n"),
+        )
+        .setTimestamp();
+      if (guildIconUrl) initialEmbed.setThumbnail(guildIconUrl);
+
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId("shield_select_duration")
+        .setPlaceholder("اختر مدة الحماية")
+        .addOptions(
+          {
+            label: "دقيقة واحدة (1 Minute)",
+            value: "minute",
+            emoji: "⏱️",
+            description: "السعر: 50,000 $",
+          },
+          {
+            label: "ساعة واحدة (1 Hour)",
+            value: "hour",
+            emoji: "⏰",
+            description: "السعر: 100,000 $",
+          },
+          {
+            label: "يوم واحد (1 Day)",
+            value: "day",
+            emoji: "📅",
+            description: "السعر: 500,000 $",
+          },
+          {
+            label: "شهر كامل (1 Month)",
+            value: "month",
+            emoji: "🗓️",
+            description: "السعر: 1,000,000 $",
+          },
+        );
+
+      const selectRow = new ActionRowBuilder<any>().addComponents(selectMenu);
+      const shieldMsg = await message.reply({
+        embeds: [initialEmbed],
+        components: [selectRow],
+      });
+
+      const filter = (i: any) => i.user.id === message.author.id;
+      const collector = shieldMsg.createMessageComponentCollector({
+        filter,
+        time: 90000,
+      });
+
+      collector.on("collect", async (interaction) => {
+        if (
+          interaction.isStringSelectMenu() &&
+          interaction.customId === "shield_select_duration"
+        ) {
+          const selectedValue = interaction.values[0];
+          const durationDataMap: Record<
+            string,
+            { name: string; cost: number; ms: number }
+          > = {
+            minute: { name: "دقيقة واحدة", cost: 50000, ms: 60 * 1000 },
+            hour: { name: "ساعة واحدة", cost: 100000, ms: 60 * 60 * 1000 },
+            day: { name: "يوم واحد", cost: 500000, ms: 24 * 60 * 60 * 1000 },
+            month: {
+              name: "شهر كامل (30 يوم)",
+              cost: 1000000,
+              ms: 30 * 24 * 60 * 60 * 1000,
+            },
+          };
+
+          const selectedData = durationDataMap[selectedValue];
+          if (!selectedData) return;
+
+          const confirmEmbed = new EmbedBuilder()
+            .setColor(2829617)
+            .setAuthor({
+              name: interaction.user.username,
+              iconURL: interaction.user.displayAvatarURL(),
+            })
+            .setTitle("🛡️ تأكيد شراء درع الحماية")
+            .setDescription(
+              [
+                `أنت اخترت مدة الحماية: **${selectedData.name}**`,
+                `تكلفة العملية المطلوبة: **${selectedData.cost.toLocaleString("en-US")} $**`,
+                ``,
+                `هل تريد إتمام عملية الدفع والتأمين أم الإلغاء؟`,
+              ].join("\n"),
+            )
+            .setTimestamp();
+          if (guildIconUrl) confirmEmbed.setThumbnail(guildIconUrl);
+
+          const payBtn = new ButtonBuilder()
+            .setCustomId(
+              `shield_pay_${selectedData.cost}_${selectedData.ms}_${selectedValue}`,
+            )
+            .setLabel("دفع")
+            .setStyle(ButtonStyle.Success);
+
+          const cancelBtn = new ButtonBuilder()
+            .setCustomId("shield_cancel")
+            .setLabel("إلغاء")
+            .setStyle(ButtonStyle.Danger);
+
+          const buttonRow = new ActionRowBuilder<any>().addComponents(
+            payBtn,
+            cancelBtn,
+          );
+
+          await interaction.update({
+            embeds: [confirmEmbed],
+            components: [buttonRow],
+          });
+          return;
+        }
+
+        if (interaction.isButton()) {
+          if (interaction.customId === "shield_cancel") {
+            collector.stop("cancelled");
+            const cancelEmbed = new EmbedBuilder()
+              .setColor(16711680)
+              .setAuthor({
+                name: interaction.user.username,
+                iconURL: interaction.user.displayAvatarURL(),
+              })
+              .setDescription("❌ **تم إلغاء عملية شراء درع الحماية.**")
+              .setTimestamp();
+
+            await interaction.update({
+              embeds: [cancelEmbed],
+              components: [],
+            });
+            return;
+          }
+
+          if (interaction.customId.startsWith("shield_pay_")) {
+            collector.stop("paid");
+            const parts = interaction.customId.split("_");
+            const cost = parseInt(parts[2], 10);
+            const durationMs = parseInt(parts[3], 10);
+            const selectedVal = parts[4];
+
+            const durationNames: Record<string, string> = {
+              minute: "دقيقة واحدة",
+              hour: "ساعة واحدة",
+              day: "يوم واحد",
+              month: "شهر كامل (30 يوم)",
+            };
+            const durationName = durationNames[selectedVal] || "درع حماية";
+
+            const profile = getUserProfile(interaction.user.id);
+            if (profile.wallet < cost) {
+              const errorEmbed = new EmbedBuilder()
+                .setColor(16711680)
+                .setAuthor({
+                  name: interaction.user.username,
+                  iconURL: interaction.user.displayAvatarURL(),
+                })
+                .setTitle("❌ فشلت عملية الدفع")
+                .setDescription(
+                  [
+                    `عذراً، رصيدك في المحفظة غير كافٍ لإتمام هذه الصفقة!`,
+                    `• **رصيدك الحالي:** \`${profile.wallet.toLocaleString("en-US")} $\``,
+                    `• **التكلفة المطلوبة:** \`${cost.toLocaleString("en-US")} $\``,
+                  ].join("\n"),
+                )
+                .setTimestamp();
+
+              await interaction.update({
+                embeds: [errorEmbed],
+                components: [],
+              });
+              return;
+            }
+
+            profile.wallet -= cost;
+            const now = Date.now();
+            if (profile.shieldUntil && profile.shieldUntil > now) {
+              profile.shieldUntil += durationMs;
+            } else {
+              profile.shieldUntil = now + durationMs;
+            }
+
+            const expireTimestamp = Math.floor(profile.shieldUntil / 1000);
+            const successEmbed = new EmbedBuilder()
+              .setColor(65280)
+              .setAuthor({
+                name: interaction.user.username,
+                iconURL: interaction.user.displayAvatarURL(),
+              })
+              .setTitle("✅ تم تفعيل درع الحماية بنجاح!")
+              .setDescription(
+                [
+                  `🛡️ **تم خصم المبلغ وتأمين حسابك ضد جميع عمليات النهب.**`,
+                  ``,
+                  `• **المدة المشتراة:** **${durationName}**`,
+                  `• **المبلغ المخصوم:** \`${cost.toLocaleString("en-US")} $\``,
+                  `• **وقت انتهاء الحماية:** <t:${expireTimestamp}:R>`,
+                  `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+                  `👛 **رصيدك المتبقي في المحفظة:** \`${profile.wallet.toLocaleString("en-US")} $\``,
+                ].join("\n"),
+              )
+              .setTimestamp();
+            if (guildIconUrl) successEmbed.setThumbnail(guildIconUrl);
+
+            await interaction.update({
+              embeds: [successEmbed],
+              components: [],
+            });
+            return;
+          }
+        }
+      });
+
+      collector.on("end", async (collected, reason) => {
+        if (reason !== "paid" && reason !== "cancelled") {
+          const timeoutEmbed = new EmbedBuilder()
+            .setColor(16711680)
+            .setAuthor({
+              name: message.author.username,
+              iconURL: message.author.displayAvatarURL(),
+            })
+            .setDescription(
+              "⏱️ **انتهت مهلة التفاعل.** تم إلغاء عملية شراء الحماية.",
+            )
+            .setTimestamp();
+
+          try {
+            await shieldMsg.edit({ embeds: [timeoutEmbed], components: [] });
+          } catch (err) {}
+        }
+      });
+
+      return;
+    }
+
+    if (content.startsWith("نهب")) {
+      const match = content.match(/^نهب\s+(<@!?\d+>)$/);
+      if (!match) {
+        if (content === "نهب") {
+          const guildIconUrl =
+            message.guild.iconURL({ size: 256 }) ||
+            client.user?.displayAvatarURL({ size: 256 });
+          const embed = new EmbedBuilder()
+            .setColor(2829617)
+            .setAuthor({
+              name: message.author.username,
+              iconURL: message.author.displayAvatarURL(),
+            })
+            .setDescription(
+              [
+                `| **نهب**`,
+                ``,
+                `**طريقة الاستخدام :**`,
+                `\`نهب\` \`المنشن\``,
+                `*(مثال: نهب @العضو)*`,
+              ].join("\n"),
+            )
+            .setTimestamp();
+          if (guildIconUrl) embed.setThumbnail(guildIconUrl);
+          await message.reply({ embeds: [embed] });
+        } else {
+          await message.reply(
+            "⚠️ **طريقة كتابة الأمر:** `نهب` `المنشن`\n*(مثال: نهب @العضو)*",
+          );
+        }
+        return;
+      }
+
+      const victimId = match[1].replace(/[<@!>]/g, "");
+
+      if (victimId === message.author.id) {
+        await message.reply("❌ لا يمكنك نهب نفسك!");
+        return;
+      }
+
+      const targetUser = message.mentions.users.get(victimId) || (await client.users.fetch(victimId).catch(() => null));
+      if (victimId === client.user?.id || (targetUser && targetUser.bot)) {
+        await message.reply("❌ لا يمكن نهب بوت!");
+        return;
+      }
+
+      const victimProfile = getUserProfile(victimId);
+      if (victimProfile.wallet <= 0) {
+        await message.reply("❌ لا يمكن أن تنهبه، فهو لا يمتلك أموالاً في المحفظة!");
+        return;
+      }
+
+      const now = Date.now();
+      if (victimProfile.shieldUntil && victimProfile.shieldUntil > now) {
+        const expireTimestamp = Math.floor(victimProfile.shieldUntil / 1000);
+        await message.reply(
+          `🛡️ **لا يمكنك نهب هذا العضو!** فهو ممتلك لدرع حماية نشط ينتهي <t:${expireTimestamp}:R>.`,
+        );
+        return;
+      }
+
+      if (!(await checkCooldown(message.author.id, "نهب", message))) return;
+
+      const randomAmount = Math.floor(Math.random() * 501) + 500;
+      const stolenAmount = Math.min(randomAmount, victimProfile.wallet);
+
+      const robberProfile = getUserProfile(message.author.id);
+      victimProfile.wallet -= stolenAmount;
+      robberProfile.wallet += stolenAmount;
+
+      const guildIconUrl =
+        message.guild.iconURL({ size: 256 }) ||
+        client.user?.displayAvatarURL({ size: 256 });
+      const embed = new EmbedBuilder()
+        .setColor(65280)
+        .setAuthor({
+          name: message.author.username,
+          iconURL: message.author.displayAvatarURL(),
+        })
+        .setDescription(
+          [
+            `| **نهب**`,
+            ``,
+            `🥷 **تمت عملية النهب بنجاح!**`,
+            `لقد قمت بنهب <@${victimId}> وسرقة **${stolenAmount.toLocaleString()} $** من محفظته!`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `👛 **رصيد محفظتك الجديد:** \`${robberProfile.wallet.toLocaleString()} $\``,
+          ].join("\n"),
+        )
+        .setTimestamp();
+      if (guildIconUrl) embed.setThumbnail(guildIconUrl);
+      await message.reply({ embeds: [embed] });
       return;
     }
     if (content.startsWith("شراء")) {
@@ -2752,6 +3601,21 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    // Command: عجلة (Wheel of Fortune)
+    if (
+      content === "عجلة" ||
+      content === "عجله" ||
+      content === "wheel" ||
+      content === "/عجلة" ||
+      content === "/wheel" ||
+      content === "عاجل" ||
+      content === "ajil"
+    ) {
+      if (!(await checkCooldown(message.author.id, "عجلة", message))) return;
+      await handleWheelCommand(message);
+      return;
+    }
+
     // Command: لغز
     if (content === "لغز" || content === "riddle") {
       if (!(await checkCooldown(message.author.id, "لغز", message))) return;
@@ -3261,6 +4125,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
     if (content === "ممتلكات") {
+      if (!(await checkCooldown(message.author.id, "ممتلكات", message))) return;
       const profile = getUserProfile(message.author.id);
       const guildIconUrl = message.guild.iconURL({ size: 256 });
       let totalInventoryValue = 0;
@@ -3942,12 +4807,18 @@ client.on("messageCreate", async (message) => {
   }
 });
 const port = process.env.PORT || 3e3;
-http
-  .createServer((req, res) => {
-    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Fire Bank Bot is online!");
-  })
-  .listen(port, () => {
-    console.log(`🌍 HTTP server is listening on port ${port}`);
-  });
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Fire Bank Bot is online!");
+});
+server.on("error", (err: any) => {
+  if (err.code === "EADDRINUSE") {
+    console.log(`⚠️ Port ${port} is already in use, continuing bot execution...`);
+  } else {
+    console.error("HTTP server error:", err);
+  }
+});
+server.listen(port, () => {
+  console.log(`🌍 HTTP server is listening on port ${port}`);
+});
 client.login(token);
