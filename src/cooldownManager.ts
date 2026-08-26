@@ -18,6 +18,7 @@ export const COMMAND_COOLDOWNS: Record<string, number> = {
   shield: 3 * 60 * 1000,    // حماية - 3 دقائق
   assets: 1 * 60 * 1000,    // ممتلكات - 1 دقيقة
   prices: 1 * 60 * 1000,    // أسعار - 1 دقيقة
+  top: 1 * 60 * 1000,       // توب - 1 دقيقة
 };
 
 // Arabic display names for formatting messages
@@ -38,6 +39,7 @@ export const COMMAND_ARABIC_NAMES: Record<string, string> = {
   shield: "حماية",
   assets: "ممتلكات",
   prices: "أسعار",
+  top: "توب",
 };
 
 /**

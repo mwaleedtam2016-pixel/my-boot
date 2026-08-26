@@ -177,6 +177,10 @@ const COMMAND_KEY_MAP: Record<string, string> = {
   "متجر": "prices",
   "استفسار": "prices",
   "prices": "prices",
+  "توب": "top",
+  "top": "top",
+  "توب الاثرياء": "top",
+  "توب الأثرياء": "top",
 };
 
 async function checkCooldown(
@@ -556,6 +560,60 @@ ${profileInfo}
 [مخزون العميل]:
 ${inventoryInfo}`;
 }
+
+function getTop10Users() {
+  const usersWithWealth: Array<{ userId: string; wealth: number }> = [];
+
+  for (const [userId, profile] of userProfiles.entries()) {
+    let totalInventoryValue = 0;
+    for (const item of marketItems) {
+      const qty = profile.inventory[item.id] || 0;
+      if (qty > 0) {
+        totalInventoryValue += qty * item.currentPrice;
+      }
+    }
+    const wealth = (profile.wallet || 0) + (profile.bank || 0) + totalInventoryValue;
+    usersWithWealth.push({ userId, wealth });
+  }
+
+  usersWithWealth.sort((a, b) => b.wealth - a.wealth);
+  return usersWithWealth.slice(0, 10);
+}
+
+function buildTopEmbed(
+  authorUsername: string,
+  authorAvatarUrl: string,
+  guildIconUrl?: string | null
+) {
+  const topUsers = getTop10Users();
+  const ranks = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"];
+  const lines: string[] = [];
+
+  if (topUsers.length === 0) {
+    lines.push("لا يوجد أعضاء في قائمة الأثرياء حالياً.");
+  } else {
+    for (let i = 0; i < topUsers.length; i++) {
+      const user = topUsers[i];
+      const rankEmoji = ranks[i] || `${i + 1}️⃣`;
+      lines.push(`${rankEmoji} <@${user.userId}> • **ثروته:** \`${user.wealth.toLocaleString("en-US")} $\``);
+    }
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(2829617)
+    .setAuthor({
+      name: authorUsername,
+      iconURL: authorAvatarUrl,
+    })
+    .setDescription([`| **توب الأثرياء**`, ``, ...lines].join("\n"))
+    .setTimestamp();
+
+  if (guildIconUrl) {
+    embed.setThumbnail(guildIconUrl);
+  }
+
+  return embed;
+}
 getAiContextString;
 const client = new Client({
   intents: [
@@ -712,6 +770,10 @@ client.once("ready", async () => {
       {
         name: "time",
         description: "عرض حالات وأوقات الانتظار لتبريد الأوامر",
+      },
+      {
+        name: "top",
+        description: "عرض قائمة أعلى 10 أثرياء في السيرفر",
       },
       {
         name: "add_money",
@@ -1186,6 +1248,7 @@ async function handleTimeInteraction(interaction: ChatInputCommandInteraction) {
     { name: "نهب", key: "نهب" },
     { name: "حماية", key: "حماية" },
     { name: "ممتلكات", key: "ممتلكات" },
+    { name: "توب", key: "توب" },
   ];
   const lines = [];
   for (const cmd of commandsList) {
@@ -1232,6 +1295,14 @@ client.on("interactionCreate", async (interaction) => {
     if (cmd === "wheel" || cmd === "ajil") {
       if (!(await checkCooldown(interaction.user.id, "عجلة", interaction))) return;
       await handleWheelCommand(interaction);
+      return;
+    }
+
+    if (cmd === "top") {
+      if (!(await checkCooldown(interaction.user.id, "top", interaction))) return;
+      const guildIconUrl = interaction.guild?.iconURL({ size: 256 }) || client.user?.displayAvatarURL({ size: 256 });
+      const embed = buildTopEmbed(interaction.user.username, interaction.user.displayAvatarURL(), guildIconUrl);
+      await interaction.reply({ embeds: [embed] });
       return;
     }
 
@@ -2383,6 +2454,7 @@ client.on("messageCreate", async (message) => {
         { name: "نهب", key: "نهب" },
         { name: "حماية", key: "حماية" },
         { name: "ممتلكات", key: "ممتلكات" },
+        { name: "توب", key: "توب" },
       ];
       const lines = [];
       for (const cmd of commandsList) {
@@ -2416,6 +2488,18 @@ client.on("messageCreate", async (message) => {
       return;
     }
     const lowerContent = content.toLowerCase();
+    if (
+      content === "توب" ||
+      content === "توب الاثرياء" ||
+      content === "توب الأثرياء" ||
+      lowerContent === "top"
+    ) {
+      if (!(await checkCooldown(message.author.id, "توب", message))) return;
+      const guildIconUrl = message.guild?.iconURL({ size: 256 }) || client.user?.displayAvatarURL({ size: 256 });
+      const embed = buildTopEmbed(message.author.username, message.author.displayAvatarURL(), guildIconUrl);
+      await message.reply({ embeds: [embed] });
+      return;
+    }
     if (
       content === "اسعار" ||
       content === "أسعار" ||
