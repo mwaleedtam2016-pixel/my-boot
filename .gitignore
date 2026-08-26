@@ -1,6 +1,8 @@
 node_modules/
 .env
 dist/
+daily_claims.json
+daily_claims.json.tmp
 allowed_channels.json
 
 .vercel

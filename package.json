@@ -7,7 +7,7 @@
     "start": "tsx src/main.ts",
     "dev": "tsx src/main.ts",
     "build": "tsc",
-    "test": "node --test test/health.test.cjs"
+    "test": "npm run build && node --test test/*.test.cjs"
   },
   "keywords": ["discord", "bot", "typescript"],
   "author": "",

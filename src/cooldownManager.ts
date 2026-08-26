@@ -19,6 +19,7 @@ export const COMMAND_COOLDOWNS: Record<string, number> = {
   assets: 1 * 60 * 1000,    // ممتلكات - 1 دقيقة
   prices: 1 * 60 * 1000,    // أسعار - 1 دقيقة
   top: 1 * 60 * 1000,       // توب - 1 دقيقة
+  daily: 24 * 60 * 60 * 1000, // يومي - 24 ساعة
 };
 
 // Arabic display names for formatting messages
@@ -40,6 +41,7 @@ export const COMMAND_ARABIC_NAMES: Record<string, string> = {
   assets: "ممتلكات",
   prices: "أسعار",
   top: "توب",
+  daily: "يومي",
 };
 
 /**

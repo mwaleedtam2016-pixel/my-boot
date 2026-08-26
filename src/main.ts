@@ -17,6 +17,8 @@ import {
   ChatInputCommandInteraction,
 } from "discord.js";
 import { cooldownManager } from "./cooldownManager";
+import { loadDailyClaimStates, saveDailyClaimStates } from "./dailyClaimStore";
+import { calculateDailyClaim } from "./dailyReward";
 import { openRouterService } from "./openRouter";
 import { syncAllGuildEmojis, ensureGuildEmojis } from "./emojiManager";
 
@@ -86,6 +88,7 @@ if (!token) {
   throw new Error("DISCORD_BOT_TOKEN is missing in environment variables");
 }
 const CONFIG_FILE = path.join(__dirname, "../allowed_channels.json");
+const DAILY_CLAIMS_FILE = path.join(__dirname, "../daily_claims.json");
 function loadAllowedChannels(): string[] {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
@@ -107,6 +110,7 @@ function saveAllowedChannels(channels: string[]) {
 }
 saveAllowedChannels;
 let allowedChannels = loadAllowedChannels();
+let dailyClaimStates = loadDailyClaimStates(DAILY_CLAIMS_FILE);
 const userProfiles = new Map();
 function getUserProfile(userId: string): UserProfile {
   if (!userProfiles.has(userId)) {
@@ -181,6 +185,8 @@ const COMMAND_KEY_MAP: Record<string, string> = {
   "top": "top",
   "توب الاثرياء": "top",
   "توب الأثرياء": "top",
+  "يومي": "daily",
+  "daily": "daily",
 };
 
 async function checkCooldown(
@@ -736,6 +742,10 @@ client.once("ready", async () => {
         description: "ترتيب الأرقام للحصول على راتبك الدوري",
       },
       {
+        name: "daily",
+        description: "استلام مكافأتك اليومية وزيادة سلسلة الأيام المتتالية",
+      },
+      {
         name: "buy",
         description: "شراء سلع أو أصول من السوق المالي",
         options: [
@@ -1231,6 +1241,66 @@ async function handleSalaryInteraction(interaction: ChatInputCommandInteraction)
   });
 }
 
+function buildDailyRewardEmbed(
+  username: string,
+  avatarUrl: string,
+  claim: { reward: number; streak: number },
+  wallet: number,
+) {
+  return new EmbedBuilder()
+    .setColor(0xff8c00)
+    .setAuthor({ name: username, iconURL: avatarUrl })
+    .setTitle("📅 المكافأة اليومية")
+    .setDescription([
+      `💰 حصلت على: \`${claim.reward.toLocaleString()} $\``,
+      `🔥 سلسلتك الحالية: \`${claim.streak} يوم\``,
+      `👛 رصيد محفظتك: \`${wallet.toLocaleString()} $\``,
+      `⏰ عُد بعد 24 ساعة للحفاظ على السلسلة.`,
+    ].join("\n"))
+    .setTimestamp();
+}
+
+async function replyWithDailyReward(
+  target: Message | ChatInputCommandInteraction,
+  claim: { reward: number; streak: number },
+  wallet: number,
+) {
+  const user = "author" in target ? target.author : target.user;
+  const streakButton = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`daily_streak_${user.id}`)
+      .setLabel(`🔥 سلسلة ${claim.streak} يوم`)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(true),
+  );
+  await target.reply({
+    embeds: [buildDailyRewardEmbed(user.username, user.displayAvatarURL(), claim, wallet)],
+    components: [streakButton],
+  });
+}
+
+async function handleDailyCommand(target: Message | ChatInputCommandInteraction) {
+  const user = "author" in target ? target.author : target.user;
+  const profile = getUserProfile(user.id);
+  const claimedAt = Date.now();
+  const claimState = dailyClaimStates.get(user.id) ?? {};
+  const claim = calculateDailyClaim(claimState, claimedAt);
+
+  if (!claim.eligible) {
+    cooldownManager.set("daily", user.id, claim.remainingMs);
+    await cooldownManager.checkAndHandle("daily", user.id, target);
+    return;
+  }
+
+  const updatedClaimStates = new Map(dailyClaimStates);
+  updatedClaimStates.set(user.id, { lastClaimAt: claimedAt, streak: claim.streak });
+  saveDailyClaimStates(DAILY_CLAIMS_FILE, updatedClaimStates);
+  dailyClaimStates = updatedClaimStates;
+  profile.wallet += claim.reward;
+  cooldownManager.set("daily", user.id);
+  await replyWithDailyReward(target, claim, profile.wallet);
+}
+
 async function handleTimeInteraction(interaction: ChatInputCommandInteraction) {
   const commandsList = [
     { name: "عجلة", key: "عجلة" },
@@ -1249,6 +1319,7 @@ async function handleTimeInteraction(interaction: ChatInputCommandInteraction) {
     { name: "حماية", key: "حماية" },
     { name: "ممتلكات", key: "ممتلكات" },
     { name: "توب", key: "توب" },
+    { name: "يومي", key: "يومي" },
   ];
   const lines = [];
   for (const cmd of commandsList) {
@@ -1303,6 +1374,11 @@ client.on("interactionCreate", async (interaction) => {
       const guildIconUrl = interaction.guild?.iconURL({ size: 256 }) || client.user?.displayAvatarURL({ size: 256 });
       const embed = buildTopEmbed(interaction.user.username, interaction.user.displayAvatarURL(), guildIconUrl);
       await interaction.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (cmd === "daily") {
+      await handleDailyCommand(interaction);
       return;
     }
 
@@ -2455,6 +2531,7 @@ client.on("messageCreate", async (message) => {
         { name: "حماية", key: "حماية" },
         { name: "ممتلكات", key: "ممتلكات" },
         { name: "توب", key: "توب" },
+        { name: "يومي", key: "يومي" },
       ];
       const lines = [];
       for (const cmd of commandsList) {
@@ -2488,6 +2565,10 @@ client.on("messageCreate", async (message) => {
       return;
     }
     const lowerContent = content.toLowerCase();
+    if (content === "يومي" || lowerContent === "daily") {
+      await handleDailyCommand(message);
+      return;
+    }
     if (
       content === "توب" ||
       content === "توب الاثرياء" ||
@@ -5065,11 +5146,15 @@ client.on("messageCreate", async (message) => {
       if (match) {
         const targetId = match[1].replace(/[<@!>]/g, "");
         userProfiles.delete(targetId);
+        dailyClaimStates.delete(targetId);
+        saveDailyClaimStates(DAILY_CLAIMS_FILE, dailyClaimStates);
         await message.reply(
           `✅ **تم تصفير رصيد وممتلكات العضو <@${targetId}> بنجاح!**`,
         );
       } else if (content === "تصفير") {
         userProfiles.clear();
+        dailyClaimStates.clear();
+        saveDailyClaimStates(DAILY_CLAIMS_FILE, dailyClaimStates);
         await message.reply(
           "✅ **تم تصفير جميع أرصدة وممتلكات الحسابات في البوت بنجاح!**",
         );
