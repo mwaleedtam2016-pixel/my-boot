@@ -14,6 +14,7 @@ import {
   ButtonStyle,
   Partials,
   Locale,
+  ChatInputCommandInteraction,
 } from "discord.js";
 import { cooldownManager } from "./cooldownManager";
 import { openRouterService } from "./openRouter";
@@ -1028,7 +1029,7 @@ async function handleSalaryInteraction(interaction: ChatInputCommandInteraction)
   });
   let nextIndex = 0;
   const clickedNumbers = new Set();
-  collector.on("collect", async (btnInteraction) => {
+  collector.on("collect", async (btnInteraction: any) => {
     if (!btnInteraction.isButton()) return;
     const clickedNum = parseInt(
       btnInteraction.customId.replace("salary_num_", ""),
