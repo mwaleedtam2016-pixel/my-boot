@@ -1298,6 +1298,48 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
+    if (cmd === "riddle") {
+      if (!(await checkCooldown(interaction.user.id, "لغز", interaction))) return;
+      await interaction.reply({ content: "🧩 **للبدء في اللغز، يرجى كتابة الأمر النصي:** `لغز`" });
+      return;
+    }
+
+    if (cmd === "math") {
+      if (!(await checkCooldown(interaction.user.id, "رياضيات", interaction))) return;
+      await interaction.reply({ content: "🧮 **للبدء في لعبة الرياضيات، يرجى كتابة الأمر النصي:** `رياضيات`" });
+      return;
+    }
+
+    if (cmd === "emoji") {
+      if (!(await checkCooldown(interaction.user.id, "ايموجي", interaction))) return;
+      await interaction.reply({ content: "😀 **للبدء في تلميح الايموجي، يرجى كتابة الأمر النصي:** `ايموجي`" });
+      return;
+    }
+
+    if (cmd === "invest") {
+      if (!(await checkCooldown(interaction.user.id, "استثمار", interaction))) return;
+      await interaction.reply({ content: "📈 **للاستثمار في الأسهم، يرجى كتابة الأمر النصي:** `استثمار`" });
+      return;
+    }
+
+    if (cmd === "trade") {
+      if (!(await checkCooldown(interaction.user.id, "تداول", interaction))) return;
+      await interaction.reply({ content: "💹 **لتداول الأصول المالية، يرجى كتابة الأمر النصي:** `تداول`" });
+      return;
+    }
+
+    if (cmd === "buy") {
+      if (!(await checkCooldown(interaction.user.id, "شراء", interaction))) return;
+      await interaction.reply({ content: "🛒 **لشراء السلع من السوق، يرجى كتابة الأمر النصي:** `شراء <اسم_السلعة>`" });
+      return;
+    }
+
+    if (cmd === "sell") {
+      if (!(await checkCooldown(interaction.user.id, "بيع", interaction))) return;
+      await interaction.reply({ content: "🏷️ **لبيع السلع للسوق، يرجى كتابة الأمر النصي:** `بيع <اسم_السلعة>`" });
+      return;
+    }
+
     if (cmd === "time") {
       await handleTimeInteraction(interaction);
       return;
