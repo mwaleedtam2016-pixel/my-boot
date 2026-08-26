@@ -968,18 +968,344 @@ async function handleWheelCommand(target: any) {
   });
 }
 
+async function handleSalaryInteraction(interaction: ChatInputCommandInteraction) {
+  const userId = interaction.user.id;
+  if (activeGames.has(userId) || activeSessions.has(userId)) {
+    await interaction.reply({
+      content: "⚠️ **لديك عملية أو لعبة معلقة بالفعل!** يرجى إتمامها أو انتظار انتهائها أولاً.",
+      ephemeral: true,
+    });
+    return;
+  }
+  activeGames.add(userId);
+  const numberSet = new Set<number>();
+  while (numberSet.size < 9) {
+    numberSet.add(Math.floor(Math.random() * 99) + 1);
+  }
+  const numbers = Array.from(numberSet);
+  const sortedNumbers = [...numbers].sort((a, b) => a - b);
+  const rows = [];
+  for (let i = 0; i < 3; i++) {
+    const row = new ActionRowBuilder<any>();
+    for (let j = 0; j < 3; j++) {
+      const num = numbers[i * 3 + j];
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`salary_num_${num}`)
+          .setLabel(num.toString())
+          .setStyle(ButtonStyle.Secondary)
+      );
+    }
+    rows.push(row);
+  }
+  const salaryEmbed = new EmbedBuilder()
+    .setColor(2829617)
+    .setAuthor({
+      name: interaction.user.username,
+      iconURL: interaction.user.displayAvatarURL(),
+    })
+    .setDescription(
+      [
+        `| **الراتب**`,
+        ``,
+        `يجب عليك ترتيب الاعداد تصاعدياً في 60 ثانية`,
+        `في حال الفشل لن يتم ايداع مبلغ الراتب الى حسابك`,
+      ].join("\n")
+    )
+    .setTimestamp();
+
+  const responseMsg = await interaction.reply({
+    embeds: [salaryEmbed],
+    components: rows,
+    fetchReply: true,
+  });
+
+  const filter = (i: any) =>
+    i.customId.startsWith("salary_num_") && i.user.id === userId;
+  const collector = responseMsg.createMessageComponentCollector({
+    filter,
+    time: 60000,
+  });
+  let nextIndex = 0;
+  const clickedNumbers = new Set();
+  collector.on("collect", async (btnInteraction) => {
+    if (!btnInteraction.isButton()) return;
+    const clickedNum = parseInt(
+      btnInteraction.customId.replace("salary_num_", ""),
+      10
+    );
+    const expectedNum = sortedNumbers[nextIndex];
+    if (clickedNum === expectedNum) {
+      clickedNumbers.add(clickedNum);
+      nextIndex++;
+      if (nextIndex === 9) {
+        collector.stop("win");
+        const profile = getUserProfile(userId);
+        const reward = 50000;
+        profile.wallet += reward;
+        activeGames.delete(userId);
+        const winRows = [];
+        for (let i = 0; i < 3; i++) {
+          const row = new ActionRowBuilder<any>();
+          for (let j = 0; j < 3; j++) {
+            const num = numbers[i * 3 + j];
+            row.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`salary_win_${num}`)
+                .setLabel(num.toString())
+                .setStyle(ButtonStyle.Success)
+                .setDisabled(true)
+            );
+          }
+          winRows.push(row);
+        }
+        const successEmbed = new EmbedBuilder()
+          .setColor(65280)
+          .setAuthor({
+            name: interaction.user.username,
+            iconURL: interaction.user.displayAvatarURL(),
+          })
+          .setDescription(
+            [
+              `| **الراتب**`,
+              ``,
+              `🏆 **تهانينا! لقد نجحت في ترتيب الأعداد تصاعدياً.**`,
+              `💰 **تم إيداع مبلغ الراتب:** \`50,000 $\` في محفظتك.`,
+              `👛 **رصيد محفظتك الجديد:** \`${profile.wallet.toLocaleString()} $\``,
+            ].join("\n")
+          )
+          .setTimestamp();
+        await btnInteraction.update({
+          embeds: [successEmbed],
+          components: winRows,
+        });
+      } else {
+        const currentRows = [];
+        for (let i = 0; i < 3; i++) {
+          const row = new ActionRowBuilder<any>();
+          for (let j = 0; j < 3; j++) {
+            const num = numbers[i * 3 + j];
+            const isClicked = clickedNumbers.has(num);
+            row.addComponents(
+              new ButtonBuilder()
+                .setCustomId(`salary_num_${num}`)
+                .setLabel(num.toString())
+                .setStyle(
+                  isClicked ? ButtonStyle.Success : ButtonStyle.Secondary
+                )
+                .setDisabled(isClicked)
+            );
+          }
+          currentRows.push(row);
+        }
+        await btnInteraction.update({ components: currentRows });
+      }
+    } else {
+      collector.stop("fail_wrong");
+      activeGames.delete(userId);
+      const failRows = [];
+      for (let i = 0; i < 3; i++) {
+        const row = new ActionRowBuilder<any>();
+        for (let j = 0; j < 3; j++) {
+          const num = numbers[i * 3 + j];
+          const isClicked = clickedNumbers.has(num);
+          const isWrong = num === clickedNum;
+          let style = ButtonStyle.Secondary;
+          if (isClicked) style = ButtonStyle.Success;
+          if (isWrong) style = ButtonStyle.Danger;
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId(`salary_fail_${num}`)
+              .setLabel(num.toString())
+              .setStyle(style)
+              .setDisabled(true)
+          );
+        }
+        failRows.push(row);
+      }
+      const failEmbed = new EmbedBuilder()
+        .setColor(16711680)
+        .setAuthor({
+          name: interaction.user.username,
+          iconURL: interaction.user.displayAvatarURL(),
+        })
+        .setDescription(
+          [
+            `| **الراتب**`,
+            ``,
+            `❌ **فشل الحصول على الراتب!**`,
+            `لقد قمت باختيار عدد خاطئ. ترتيب الأعداد كان يجب أن يكون تصاعدياً.`,
+          ].join("\n")
+        )
+        .setTimestamp();
+      await btnInteraction.update({
+        embeds: [failEmbed],
+        components: failRows,
+      });
+    }
+  });
+
+  collector.on("end", async (_: any, reason: any) => {
+    if (reason === "time" && activeGames.has(userId)) {
+      activeGames.delete(userId);
+      const timeoutEmbed = new EmbedBuilder()
+        .setColor(16711680)
+        .setAuthor({
+          name: interaction.user.username,
+          iconURL: interaction.user.displayAvatarURL(),
+        })
+        .setDescription(
+          [
+            `| **الراتب**`,
+            ``,
+            `⏰ **انتهى الوقت (60 ثانية)!**`,
+            `لم تقم بإكمال ترتيب الأعداد في الوقت المحدد.`,
+          ].join("\n")
+        )
+        .setTimestamp();
+      await responseMsg.edit({ embeds: [timeoutEmbed], components: [] }).catch(() => {});
+    }
+  });
+}
+
+async function handleTimeInteraction(interaction: ChatInputCommandInteraction) {
+  const commandsList = [
+    { name: "راتب", key: "الراتب" },
+    { name: "عجلة", key: "عجلة" },
+    { name: "تجارة", key: "تجارة" },
+    { name: "شراء", key: "شراء" },
+    { name: "بيع", key: "بيع" },
+    { name: "تداول", key: "تداول" },
+    { name: "استثمار", key: "استثمار" },
+    { name: "ايموجي", key: "ايموجي" },
+    { name: "رياضيات", key: "رياضيات" },
+    { name: "لغز", key: "لغز" },
+    { name: "نهب", key: "نهب" },
+    { name: "حماية", key: "حماية" },
+    { name: "ممتلكات", key: "ممتلكات" },
+  ];
+  const lines = [];
+  for (const cmd of commandsList) {
+    const cmdKey = COMMAND_KEY_MAP[cmd.key] || cmd.key;
+    const remainingMs = cooldownManager.getRemaining(cmdKey, interaction.user.id);
+    let isCooldown = false;
+    let remainingStr = "";
+    if (remainingMs > 0) {
+      isCooldown = true;
+      const totalSeconds = remainingMs / 1e3;
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = Math.floor(totalSeconds % 60);
+      const tenths = Math.floor((remainingMs % 1e3) / 100);
+      remainingStr = ` : ${minutes}:${seconds.toString().padStart(2, "0")}.${tenths}`;
+    }
+    const circle = isCooldown ? "🔴" : "🟢";
+    lines.push(`‏${circle} ${cmd.name}${remainingStr}`);
+  }
+  const embed = new EmbedBuilder()
+    .setColor(2829617)
+    .setAuthor({
+      name: interaction.user.username,
+      iconURL: interaction.user.displayAvatarURL(),
+    })
+    .setDescription([`| **وقت**`, ``, ...lines].join("\n"))
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}
+
 client.on("interactionCreate", async (interaction) => {
   try {
     if (!interaction.isChatInputCommand()) return;
-    if (interaction.commandName === "wheel" || interaction.commandName === "ajil") {
+    const cmd = interaction.commandName;
+
+    if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+      await interaction.reply({
+        content: `⚠️ **هذا الروم غير مفعل لأوامر البوت.** يرجى استخدام أحد الرومات المفعلة: ${allowedChannels.map((id) => `<#${id}>`).join(" ، ")}`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (cmd === "wheel" || cmd === "ajil") {
       if (!(await checkCooldown(interaction.user.id, "عجلة", interaction))) return;
       await handleWheelCommand(interaction);
       return;
     }
+
+    if (cmd === "prices") {
+      if (!(await checkCooldown(interaction.user.id, "prices", interaction))) return;
+      const isEn = botLanguage === "en";
+      const embed = getMarketEmbed(
+        interaction.guild,
+        interaction.user.username,
+        interaction.user.displayAvatarURL(),
+        botLanguage
+      );
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId("prices_info_select")
+        .setPlaceholder(isEn ? "Price Inquiry" : "استفسار عن أسعار المنتجات")
+        .addOptions(
+          marketItems.map((item) => ({
+            label: isEn ? item.nameEn : item.name,
+            value: item.id,
+            emoji: item.emoji,
+            description: isEn ? `Price inquiry for ${item.nameEn}` : `استفسار عن سعر ${item.name}`,
+          }))
+        );
+      const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(selectMenu);
+      await interaction.reply({ embeds: [embed], components: [row] });
+      return;
+    }
+
+    if (cmd === "properties") {
+      if (!(await checkCooldown(interaction.user.id, "ممتلكات", interaction))) return;
+      const profile = getUserProfile(interaction.user.id);
+      const itemsList = Object.entries(profile.inventory)
+        .filter(([_, qty]) => qty > 0)
+        .map(([id, qty]) => {
+          const item = marketItems.find((i) => i.id === id);
+          return item ? `${item.emoji} **${item.name}:** \`${qty}\`` : null;
+        })
+        .filter(Boolean);
+
+      const embed = new EmbedBuilder()
+        .setColor(0x2b2d31)
+        .setAuthor({
+          name: interaction.user.username,
+          iconURL: interaction.user.displayAvatarURL(),
+        })
+        .setTitle("📦 كشف حساب وممتلكات العضو | Fire Bank")
+        .setDescription(
+          [
+            `أهلاً بك <@${interaction.user.id}>، فيما يلي كشف بجميع ممتلكاتك وأصولك المالية:`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `👛 **المحفظة:** \`${profile.wallet.toLocaleString()} $\``,
+            `🏦 **البنك:** \`${profile.bank.toLocaleString()} $\``,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `📦 **المحتويات والممتلكات:**`,
+            itemsList.length > 0 ? itemsList.join("\n") : "لا تملك أي ممتلكات حالياً.",
+          ].join("\n")
+        )
+        .setTimestamp();
+      await interaction.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (cmd === "salary") {
+      if (!(await checkCooldown(interaction.user.id, "الراتب", interaction))) return;
+      await handleSalaryInteraction(interaction);
+      return;
+    }
+
+    if (cmd === "time") {
+      await handleTimeInteraction(interaction);
+      return;
+    }
+
     if (
-      interaction.commandName === "abb-channel" ||
-      interaction.commandName === "cancel-room" ||
-      interaction.commandName === "choose-language"
+      cmd === "abb-channel" ||
+      cmd === "cancel-room" ||
+      cmd === "choose-language"
     ) {
       const isConfigOwner =
         interaction.user.id === interaction.guild?.ownerId ||
@@ -994,7 +1320,7 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    if (interaction.commandName === "abb-channel") {
+    if (cmd === "abb-channel") {
       const ch1 = interaction.options.getChannel("channel1");
       const ch2 = interaction.options.getChannel("channel2");
       const ch3 = interaction.options.getChannel("channel3");
@@ -1012,9 +1338,10 @@ client.on("interactionCreate", async (interaction) => {
 • ${channelListString}
 *(لن يستجيب البوت لأي أمر خارج هذه الغرف)*`,
       });
+      return;
     }
 
-    if (interaction.commandName === "cancel-room") {
+    if (cmd === "cancel-room") {
       const ch = interaction.options.getChannel("channel");
       if (!ch) return;
       const targetChannelId = ch.id;
@@ -1030,9 +1357,10 @@ client.on("interactionCreate", async (interaction) => {
           ephemeral: true,
         });
       }
+      return;
     }
 
-    if (interaction.commandName === "choose-language") {
+    if (cmd === "choose-language") {
       const selectedLang = interaction.options.getString("language");
       if (selectedLang === "ar" || selectedLang === "en") {
         botLanguage = selectedLang;
@@ -1047,11 +1375,12 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
       }
+      return;
     }
 
     if (
-      interaction.commandName === "add_money" ||
-      interaction.commandName === "got"
+      cmd === "add_money" ||
+      cmd === "got"
     ) {
       const isConfigOwner =
         interaction.user.id === interaction.guild?.ownerId ||
@@ -1211,15 +1540,6 @@ client.on("messageCreate", async (message) => {
     if (!isSetupCmd && !isMentioned) {
       if (allowedChannels.length > 0) {
         if (!allowedChannels.includes(message.channel.id)) return;
-      } else {
-        const channelName =
-          "name" in message.channel ? message.channel.name.toLowerCase() : "";
-        if (
-          channelName !== "البنك" &&
-          channelName !== "bank" &&
-          !channelName.includes("البنك")
-        )
-          return;
       }
     }
     console.log(`Received: "${content}"`);
