@@ -1,15 +1,17 @@
 {
-  "version": 2,
-  "builds": [
+  "cleanUrls": true,
+  "rewrites": [
     {
-      "src": "api/health.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
     {
-      "src": "/(.*)",
-      "dest": "api/health.js"
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/health.js"
     }
   ]
 }

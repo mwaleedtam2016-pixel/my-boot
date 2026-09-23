@@ -5342,9 +5342,53 @@ client.on("messageCreate", async (message) => {
   }
 });
 const port = process.env.PORT || 3e3;
+const PUBLIC_DIR = path.join(__dirname, "../public");
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+};
+
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("Fire Bank Bot is online!");
+  const reqUrl = req.url?.split("?")[0] || "/";
+
+  // Health endpoint
+  if (reqUrl === "/health" || reqUrl === "/api/health") {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Fire Bank Bot is online!");
+    return;
+  }
+
+  let filePath = path.join(PUBLIC_DIR, reqUrl);
+  if (reqUrl === "/" || reqUrl === "") {
+    filePath = path.join(PUBLIC_DIR, "index.html");
+  } else if (reqUrl === "/terms") {
+    filePath = path.join(PUBLIC_DIR, "terms.html");
+  } else if (reqUrl === "/privacy") {
+    filePath = path.join(PUBLIC_DIR, "privacy.html");
+  }
+
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": contentType });
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    const fallbackPath = path.join(PUBLIC_DIR, "index.html");
+    if (fs.existsSync(fallbackPath)) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      fs.createReadStream(fallbackPath).pipe(res);
+    } else {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not Found");
+    }
+  }
 });
 server.on("error", (err: any) => {
   if (err.code === "EADDRINUSE") {
