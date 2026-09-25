@@ -677,7 +677,7 @@ client.once("ready", async () => {
     const allSlashCommands = [
       {
         name: "abb-channel",
-        description: "تحديد الغرف التي يمكن للبوت العمل فيها (بحد أقصى 3 غرف)",
+        description: "تحديد الغرف التي يمكن للبوت العمل فيها (بحد أقصى 5 غرف)",
         options: [
           {
             name: "channel1",
@@ -696,6 +696,20 @@ client.once("ready", async () => {
           {
             name: "channel3",
             description: "الروم الثالث المسموح به للعمليات البنكية (اختياري)",
+            type: 7,
+            channel_types: [0],
+            required: false,
+          },
+          {
+            name: "channel4",
+            description: "الروم الرابع المسموح به للعمليات البنكية (اختياري)",
+            type: 7,
+            channel_types: [0],
+            required: false,
+          },
+          {
+            name: "channel5",
+            description: "الروم الخامس المسموح به للعمليات البنكية (اختياري)",
             type: 7,
             channel_types: [0],
             required: false,
@@ -1581,10 +1595,14 @@ client.on("interactionCreate", async (interaction) => {
       const ch1 = interaction.options.getChannel("channel1");
       const ch2 = interaction.options.getChannel("channel2");
       const ch3 = interaction.options.getChannel("channel3");
+      const ch4 = interaction.options.getChannel("channel4");
+      const ch5 = interaction.options.getChannel("channel5");
       const tempChannels = [];
       if (ch1) tempChannels.push(ch1.id);
       if (ch2) tempChannels.push(ch2.id);
       if (ch3) tempChannels.push(ch3.id);
+      if (ch4) tempChannels.push(ch4.id);
+      if (ch5) tempChannels.push(ch5.id);
       setGuildAllowedChannels(interaction.guildId, tempChannels);
       const channelListString = tempChannels
         .map((id: any) => `<#${id}>`)
@@ -5256,13 +5274,13 @@ client.on("messageCreate", async (message) => {
       const channelMentions = message.mentions.channels;
       if (channelMentions.size === 0) {
         await message.reply(
-          "⚠️ **طريقة كتابة الأمر:**\n• `/abb-channel #روم1 #روم2 #روم3` (تحديد حتى 3 رومات)",
+          "⚠️ **طريقة كتابة الأمر:**\n• `/abb-channel #روم1 #روم2 #روم3 #روم4 #روم5` (تحديد حتى 5 رومات)",
         );
         return;
       }
-      if (channelMentions.size > 3) {
+      if (channelMentions.size > 5) {
         await message.reply(
-          "❌ **خطأ:** لا يمكن تفعيل البوت في أكثر من 3 رومات!",
+          "❌ **خطأ:** لا يمكن تفعيل البوت في أكثر من 5 رومات!",
         );
         return;
       }
