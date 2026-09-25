@@ -225,6 +225,11 @@ const COMMAND_KEY_MAP: Record<string, string> = {
   "توب الأثرياء": "top",
   "يومي": "daily",
   "daily": "daily",
+  "رصيد": "balance",
+  "رصيدي": "balance",
+  "balance": "balance",
+  "تحويل": "transfer",
+  "transfer": "transfer",
 };
 
 async function checkCooldown(
@@ -877,6 +882,37 @@ client.once("ready", async () => {
           },
         ],
       },
+      {
+        name: "balance",
+        description: "عرض رصيدك المالي في المحفظة والبنك أو رصيد عضو محدد",
+        options: [
+          {
+            name: "user",
+            description: "العضو المراد عرض رصيده (اختياري)",
+            type: 6,
+            required: false,
+          },
+        ],
+      },
+      {
+        name: "transfer",
+        description: "تحويل رصيد مالي من محفظتك إلى عضو آخر",
+        options: [
+          {
+            name: "user",
+            description: "العضو المراد تحويل الأموال إليه",
+            type: 6,
+            required: true,
+          },
+          {
+            name: "amount",
+            description: "المبلغ المراد تحويله بالدولار",
+            type: 4,
+            min_value: 1,
+            required: true,
+          },
+        ],
+      },
     ];
 
     await client.application?.commands.set(allSlashCommands);
@@ -1393,6 +1429,8 @@ async function handleTimeInteraction(interaction: ChatInputCommandInteraction) {
     { name: "ممتلكات", key: "ممتلكات" },
     { name: "توب", key: "توب" },
     { name: "يومي", key: "يومي" },
+    { name: "رصيد", key: "balance" },
+    { name: "تحويل", key: "transfer" },
   ];
   const lines = [];
   for (const cmd of commandsList) {
@@ -1604,6 +1642,123 @@ client.on("interactionCreate", async (interaction) => {
 
     if (cmd === "time") {
       await handleTimeInteraction(interaction);
+      return;
+    }
+
+    if (cmd === "balance") {
+      if (!(await checkCooldown(interaction.user.id, "balance", interaction))) return;
+      const targetUser = interaction.options.getUser("user") || interaction.user;
+      const profile = getUserProfile(targetUser.id);
+      const total = profile.wallet + profile.bank;
+      const embed = new EmbedBuilder()
+        .setColor(2829617)
+        .setAuthor({
+          name: targetUser.username,
+          iconURL: targetUser.displayAvatarURL(),
+        })
+        .setTitle("💳 كشف الرصيد المالي | Fire Bank")
+        .setDescription(`رصيد الحساب المالي الخاص بـ <@${targetUser.id}>:`)
+        .addFields(
+          {
+            name: "👛 المحفظة (الكاش)",
+            value: `\`${profile.wallet.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+          {
+            name: "🏦 البنك (الحساب الجاري)",
+            value: `\`${profile.bank.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+          {
+            name: "💰 إجمالي الرصيد",
+            value: `\`${total.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+        )
+        .setFooter({ text: "Fire Bank • نظام الخدمات المصرفية" })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+      return;
+    }
+
+    if (cmd === "transfer") {
+      if (!(await checkCooldown(interaction.user.id, "transfer", interaction))) return;
+      const targetUser = interaction.options.getUser("user");
+      const amount = interaction.options.getInteger("amount");
+      if (!targetUser || !amount || amount <= 0) {
+        await interaction.reply({
+          content: "❌ **يرجى تحديد العضو ومبلغ تحويل صحيح أكبر من 0!**",
+          ephemeral: true,
+        });
+        return;
+      }
+      if (targetUser.bot) {
+        await interaction.reply({
+          content: "❌ **لا يمكنك تحويل الأموال إلى البوتات!**",
+          ephemeral: true,
+        });
+        return;
+      }
+      if (targetUser.id === interaction.user.id) {
+        await interaction.reply({
+          content: "❌ **لا يمكنك تحويل الأموال لنفسك!**",
+          ephemeral: true,
+        });
+        return;
+      }
+      const senderProfile = getUserProfile(interaction.user.id);
+      if (senderProfile.wallet < amount) {
+        await interaction.reply({
+          content: `❌ **رصيدك غير كافٍ!** محفظتك تحتوي فقط على: \`${senderProfile.wallet.toLocaleString("en-US")} $\``,
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const targetProfile = getUserProfile(targetUser.id);
+      senderProfile.wallet -= amount;
+      targetProfile.wallet += amount;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00d26a)
+        .setAuthor({
+          name: interaction.user.username,
+          iconURL: interaction.user.displayAvatarURL(),
+        })
+        .setTitle("💸 تم تحويل الأموال بنجاح! | Fire Bank")
+        .setDescription("تمت عملية التحويل المصرفي بنجاح بين الحسابين:")
+        .addFields(
+          {
+            name: "👤 المُرسل (المُحوِّل)",
+            value: `<@${interaction.user.id}>`,
+            inline: true,
+          },
+          {
+            name: "📥 المُستلم",
+            value: `<@${targetUser.id}>`,
+            inline: true,
+          },
+          {
+            name: "💵 المبلغ المحول",
+            value: `\`${amount.toLocaleString("en-US")} $\``,
+            inline: false,
+          },
+          {
+            name: "👛 رصيد محفظتك المتبقي",
+            value: `\`${senderProfile.wallet.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+          {
+            name: "👛 رصيد محفظة المستلم الجديد",
+            value: `\`${targetProfile.wallet.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+        )
+        .setFooter({ text: "Fire Bank • إشعار تحويل مصرفي آمن" })
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
       return;
     }
 
@@ -2673,6 +2828,8 @@ client.on("messageCreate", async (message) => {
         { name: "ممتلكات", key: "ممتلكات" },
         { name: "توب", key: "توب" },
         { name: "يومي", key: "يومي" },
+        { name: "رصيد", key: "balance" },
+        { name: "تحويل", key: "transfer" },
       ];
       const lines = [];
       for (const cmd of commandsList) {
@@ -4796,6 +4953,156 @@ client.on("messageCreate", async (message) => {
 
       return;
     }
+
+    // --- أمر رصيد (Balance) ---
+    if (
+      content === "رصيد" ||
+      content === "رصيدي" ||
+      content.startsWith("رصيد ") ||
+      content === "balance" ||
+      content.startsWith("balance ")
+    ) {
+      if (!(await checkCooldown(message.author.id, "balance", message))) return;
+      const targetUser = message.mentions.users.first() || message.author;
+      const profile = getUserProfile(targetUser.id);
+      const total = profile.wallet + profile.bank;
+      const embed = new EmbedBuilder()
+        .setColor(2829617)
+        .setAuthor({
+          name: targetUser.username,
+          iconURL: targetUser.displayAvatarURL(),
+        })
+        .setTitle("💳 كشف الرصيد المالي | Fire Bank")
+        .setDescription(`رصيد الحساب المالي الخاص بـ <@${targetUser.id}>:`)
+        .addFields(
+          {
+            name: "👛 المحفظة (الكاش)",
+            value: `\`${profile.wallet.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+          {
+            name: "🏦 البنك (الحساب الجاري)",
+            value: `\`${profile.bank.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+          {
+            name: "💰 إجمالي الرصيد",
+            value: `\`${total.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+        )
+        .setFooter({ text: "Fire Bank • نظام الخدمات المصرفية" })
+        .setTimestamp();
+
+      const guildIconUrl = message.guild?.iconURL({ size: 256 });
+      if (guildIconUrl) {
+        embed.setThumbnail(guildIconUrl);
+      }
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
+    // --- أمر تحويل (Transfer) ---
+    if (
+      content.startsWith("تحويل") ||
+      content.startsWith("transfer")
+    ) {
+      const targetUser = message.mentions.users.first();
+      // Clean string by removing the command name and user mention to extract amount
+      const rest = content
+        .replace(/^(تحويل|transfer)/i, "")
+        .replace(/<@!?\d+>/g, "")
+        .trim();
+
+      if (!targetUser || !rest) {
+        await message.reply(
+          "⚠️ **طريقة كتابة الأمر:**\n• `تحويل @الشخص المبلغ`\n*(مثال: `تحويل @user 5000` أو `تحويل @user كل`)*",
+        );
+        return;
+      }
+
+      if (targetUser.bot) {
+        await message.reply("❌ **لا يمكنك تحويل الأموال إلى البوتات!**");
+        return;
+      }
+
+      if (targetUser.id === message.author.id) {
+        await message.reply("❌ **لا يمكنك تحويل الأموال لنفسك!**");
+        return;
+      }
+
+      const senderProfile = getUserProfile(message.author.id);
+      let amount: number;
+
+      if (rest.toLowerCase() === "all" || rest === "كل") {
+        amount = senderProfile.wallet;
+      } else {
+        amount = Math.floor(Number(rest));
+      }
+
+      if (isNaN(amount) || amount <= 0) {
+        await message.reply(
+          "❌ **يرجى كتابة مبلغ صحيح وموجب للتحويل!**\n• مثال: `تحويل @user 5000` أو `تحويل @user كل`",
+        );
+        return;
+      }
+
+      if (senderProfile.wallet < amount) {
+        await message.reply(
+          `❌ **رصيدك غير كافٍ!** محفظتك تحتوي فقط على: \`${senderProfile.wallet.toLocaleString("en-US")} $\``,
+        );
+        return;
+      }
+
+      if (!(await checkCooldown(message.author.id, "transfer", message))) return;
+
+      const targetProfile = getUserProfile(targetUser.id);
+      senderProfile.wallet -= amount;
+      targetProfile.wallet += amount;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00d26a)
+        .setAuthor({
+          name: message.author.username,
+          iconURL: message.author.displayAvatarURL(),
+        })
+        .setTitle("💸 تم تحويل الأموال بنجاح! | Fire Bank")
+        .setDescription("تمت عملية التحويل المصرفي بنجاح بين الحسابين:")
+        .addFields(
+          {
+            name: "👤 المُرسل (المُحوِّل)",
+            value: `<@${message.author.id}>`,
+            inline: true,
+          },
+          {
+            name: "📥 المُستلم",
+            value: `<@${targetUser.id}>`,
+            inline: true,
+          },
+          {
+            name: "💵 المبلغ المحول",
+            value: `\`${amount.toLocaleString("en-US")} $\``,
+            inline: false,
+          },
+          {
+            name: "👛 رصيد محفظتك المتبقي",
+            value: `\`${senderProfile.wallet.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+          {
+            name: "👛 رصيد محفظة المستلم الجديد",
+            value: `\`${targetProfile.wallet.toLocaleString("en-US")} $\``,
+            inline: true,
+          },
+        )
+        .setFooter({ text: "Fire Bank • إشعار تحويل مصرفي آمن" })
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      return;
+    }
+
     if (content === "ممتلكات") {
       if (!(await checkCooldown(message.author.id, "ممتلكات", message))) return;
       const profile = getUserProfile(message.author.id);
