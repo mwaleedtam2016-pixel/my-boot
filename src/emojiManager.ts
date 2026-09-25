@@ -13,6 +13,11 @@ export const EMOJI_DATA_URIS = {
  */
 export async function ensureGuildEmojis(guild: Guild): Promise<void> {
   try {
+    const me = await guild.members.fetchMe().catch(() => null);
+    if (me && !me.permissions.has("ManageGuildExpressions") && !me.permissions.has("ManageEmojisAndStickers")) {
+      console.log(`ℹ️ [EMOJIS] Skipping emoji creation in "${guild.name}" (Missing Manage Emojis permission)`);
+      return;
+    }
     const emojis = await guild.emojis.fetch();
 
     const requiredEmojis = [

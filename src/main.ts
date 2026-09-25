@@ -15,6 +15,7 @@ import {
   Partials,
   Locale,
   ChatInputCommandInteraction,
+  PermissionFlagsBits,
 } from "discord.js";
 import { cooldownManager } from "./cooldownManager";
 import { loadDailyClaimStates, saveDailyClaimStates } from "./dailyClaimStore";
@@ -89,27 +90,64 @@ if (!token) {
 }
 const CONFIG_FILE = path.join(__dirname, "../allowed_channels.json");
 const DAILY_CLAIMS_FILE = path.join(__dirname, "../daily_claims.json");
-function loadAllowedChannels(): string[] {
+type GuildAllowedChannelsMap = Record<string, string[]>;
+
+function loadAllowedChannels(): GuildAllowedChannelsMap {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const data = fs.readFileSync(CONFIG_FILE, "utf-8");
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed)) {
+        return {};
+      }
+      if (typeof parsed === "object" && parsed !== null) {
+        return parsed;
+      }
     }
   } catch (err) {
     console.error("Failed to load allowed channels:", err);
   }
-  return [];
+  return {};
 }
-loadAllowedChannels;
-function saveAllowedChannels(channels: string[]) {
+
+function saveAllowedChannels(channelsMap: GuildAllowedChannelsMap) {
   try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channels, null, 2), "utf-8");
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(channelsMap, null, 2), "utf-8");
   } catch (err) {
     console.error("Failed to save allowed channels:", err);
   }
 }
-saveAllowedChannels;
-let allowedChannels = loadAllowedChannels();
+
+let allowedChannelsMap: GuildAllowedChannelsMap = loadAllowedChannels();
+
+function isChannelAllowed(guildId: string | null | undefined, channelId: string): boolean {
+  if (!guildId) return true;
+  const guildChannels = allowedChannelsMap[guildId];
+  if (!guildChannels || guildChannels.length === 0) {
+    return true; // No restrictions for this guild: all channels are allowed by default
+  }
+  return guildChannels.includes(channelId);
+}
+
+function getGuildAllowedChannels(guildId: string | null | undefined): string[] {
+  if (!guildId) return [];
+  return allowedChannelsMap[guildId] || [];
+}
+
+function setGuildAllowedChannels(guildId: string, channels: string[]) {
+  allowedChannelsMap[guildId] = channels;
+  saveAllowedChannels(allowedChannelsMap);
+}
+
+function removeGuildAllowedChannel(guildId: string, channelId: string): boolean {
+  const current = allowedChannelsMap[guildId] || [];
+  if (current.includes(channelId)) {
+    allowedChannelsMap[guildId] = current.filter((id) => id !== channelId);
+    saveAllowedChannels(allowedChannelsMap);
+    return true;
+  }
+  return false;
+}
 let dailyClaimStates = loadDailyClaimStates(DAILY_CLAIMS_FILE);
 const userProfiles = new Map();
 function getUserProfile(userId: string): UserProfile {
@@ -839,7 +877,28 @@ client.once("ready", async () => {
   }
 });
 client.on("guildCreate", async (guild) => {
-  await ensureGuildEmojis(guild);
+  try {
+    console.log(`📥 [GUILD_JOIN] Joined new guild: "${guild.name}" (ID: ${guild.id}) | Member Count: ${guild.memberCount} | Owner: ${guild.ownerId}`);
+    try {
+      await guild.commands.set([]); // Clean up duplicate local guild commands
+    } catch (_) {}
+    const botMember = await guild.members.fetchMe().catch(() => null);
+    if (botMember) {
+      const perms = botMember.permissions;
+      console.log(`📋 [GUILD_JOIN] Permissions in "${guild.name}": ViewChannel=${perms.has(PermissionFlagsBits.ViewChannel)}, SendMessages=${perms.has(PermissionFlagsBits.SendMessages)}, EmbedLinks=${perms.has(PermissionFlagsBits.EmbedLinks)}, ManageEmojis=${perms.has(PermissionFlagsBits.ManageGuildExpressions)}`);
+      if (perms.has(PermissionFlagsBits.ManageGuildExpressions)) {
+        await ensureGuildEmojis(guild);
+      } else {
+        console.log(`ℹ️ [GUILD_JOIN] Skipping emoji creation in "${guild.name}" (Missing ManageGuildExpressions permission)`);
+      }
+    }
+  } catch (err) {
+    console.error(`❌ [GUILD_JOIN] Error handling guildCreate for "${guild.name}":`, err);
+  }
+});
+
+client.on("guildDelete", (guild) => {
+  console.log(`📤 [GUILD_LEAVE] Removed from guild: "${guild.name}" (ID: ${guild.id})`);
 });
 
 interface WheelPrize {
@@ -1355,9 +1414,11 @@ client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const cmd = interaction.commandName;
 
-    if (allowedChannels.length > 0 && !allowedChannels.includes(interaction.channelId)) {
+    const guildId = interaction.guildId;
+    if (guildId && !isChannelAllowed(guildId, interaction.channelId)) {
+      const allowedList = getGuildAllowedChannels(guildId);
       await interaction.reply({
-        content: `⚠️ **هذا الروم غير مفعل لأوامر البوت.** يرجى استخدام أحد الرومات المفعلة: ${allowedChannels.map((id) => `<#${id}>`).join(" ، ")}`,
+        content: `⚠️ **هذا الروم غير مفعل لأوامر البوت في هذا السيرفر.** يرجى استخدام أحد الرومات المفعلة: ${allowedList.map((id) => `<#${id}>`).join(" ، ")}`,
         ephemeral: true,
       });
       return;
@@ -1513,6 +1574,10 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (cmd === "abb-channel") {
+      if (!interaction.guildId) {
+        await interaction.reply({ content: "❌ هذا الأمر متاح داخل السيرفرات فقط.", ephemeral: true });
+        return;
+      }
       const ch1 = interaction.options.getChannel("channel1");
       const ch2 = interaction.options.getChannel("channel2");
       const ch3 = interaction.options.getChannel("channel3");
@@ -1520,32 +1585,32 @@ client.on("interactionCreate", async (interaction) => {
       if (ch1) tempChannels.push(ch1.id);
       if (ch2) tempChannels.push(ch2.id);
       if (ch3) tempChannels.push(ch3.id);
-      allowedChannels = tempChannels;
-      saveAllowedChannels(allowedChannels);
-      const channelListString = allowedChannels
+      setGuildAllowedChannels(interaction.guildId, tempChannels);
+      const channelListString = tempChannels
         .map((id: any) => `<#${id}>`)
         .join(" ، ");
       await interaction.reply({
-        content: `✅ **تم تفعيل البوت بنجاح في الغرف المحددة:**
-• ${channelListString}
-*(لن يستجيب البوت لأي أمر خارج هذه الغرف)*`,
+        content: `✅ **تم تفعيل البوت بنجاح في الغرف المحددة لهذا السيرفر:**\n• ${channelListString}\n*(لن يستجيب البوت لأي أمر خارج هذه الغرف في هذا السيرفر)*`,
       });
       return;
     }
 
     if (cmd === "cancel-room") {
+      if (!interaction.guildId) {
+        await interaction.reply({ content: "❌ هذا الأمر متاح داخل السيرفرات فقط.", ephemeral: true });
+        return;
+      }
       const ch = interaction.options.getChannel("channel");
       if (!ch) return;
       const targetChannelId = ch.id;
-      if (allowedChannels.includes(targetChannelId)) {
-        allowedChannels = allowedChannels.filter((id) => id !== targetChannelId);
-        saveAllowedChannels(allowedChannels);
+      const removed = removeGuildAllowedChannel(interaction.guildId, targetChannelId);
+      if (removed) {
         await interaction.reply({
           content: `✅ **تم إلغاء تفعيل البوت في الروم <#${targetChannelId}> بنجاح!**\n*(لن يستجيب البوت للأوامر هناك بعد الآن)*`,
         });
       } else {
         await interaction.reply({
-          content: `⚠️ **الروم <#${targetChannelId}> غير مضاف إلى القنوات المفعلة بالفعل.**`,
+          content: `⚠️ **الروم <#${targetChannelId}> غير مضاف إلى القنوات المفعلة بالفعل في هذا السيرفر.**`,
           ephemeral: true,
         });
       }
@@ -1648,8 +1713,20 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({ embeds: [embed] });
       return;
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error("Error in interactionCreate:", err);
+    if (err?.code === 50013) {
+      try {
+        if (interaction.isRepliable()) {
+          const warnText = "⚠️ **خطأ في الصلاحيات:** البوت يفتقر إلى صلاحية **تضمين الروابط (Embed Links)** في هذا الروم لإظهار الواجهة البنكية.";
+          if (interaction.deferred || interaction.replied) {
+            await interaction.followUp({ content: warnText, ephemeral: true });
+          } else {
+            await interaction.reply({ content: warnText, ephemeral: true });
+          }
+        }
+      } catch (_) {}
+    }
   }
 });
 client.on("messageCreate", async (message) => {
@@ -1730,8 +1807,8 @@ client.on("messageCreate", async (message) => {
       isArabicRoomMention ||
       isCancelCmd;
     if (!isSetupCmd && !isMentioned) {
-      if (allowedChannels.length > 0) {
-        if (!allowedChannels.includes(message.channel.id)) return;
+      if (message.guild && !isChannelAllowed(message.guild.id, message.channel.id)) {
+        return;
       }
     }
     console.log(`Received: "${content}"`);
@@ -1871,14 +1948,14 @@ client.on("messageCreate", async (message) => {
       }
 
       const targetChannelId = channelMatch[1];
-      if (allowedChannels.includes(targetChannelId)) {
-        allowedChannels = allowedChannels.filter((id) => id !== targetChannelId);
-        saveAllowedChannels(allowedChannels);
+      if (!message.guild) return;
+      const removed = removeGuildAllowedChannel(message.guild.id, targetChannelId);
+      if (removed) {
         await message.reply(
           `✅ **تم إلغاء تفعيل البوت في الروم <#${targetChannelId}> بنجاح!**\n*(لن يستجيب البوت للأوامر هناك بعد الآن)*`,
         );
       } else {
-        await message.reply(`⚠️ **الروم <#${targetChannelId}> غير مضاف إلى القنوات المفعلة بالفعل.**`);
+        await message.reply(`⚠️ **الروم <#${targetChannelId}> غير مضاف إلى القنوات المفعلة بالفعل في هذا السيرفر.**`);
       }
       return;
     }
@@ -5189,13 +5266,13 @@ client.on("messageCreate", async (message) => {
         );
         return;
       }
+      if (!message.guild) return;
       const tempChannels = Array.from(channelMentions.keys());
-      allowedChannels = tempChannels;
-      saveAllowedChannels(allowedChannels);
-      const channelListString = allowedChannels
+      setGuildAllowedChannels(message.guild.id, tempChannels);
+      const channelListString = tempChannels
         .map((id) => `<#${id}>`)
         .join(" ، ");
-      await message.reply(`✅ **تم تفعيل البوت بنجاح في الغرف المحددة:**
+      await message.reply(`✅ **تم تفعيل البوت بنجاح في الغرف المحددة لهذا السيرفر:**
 • ${channelListString}
 *(لن يستجيب البوت لأي أمر خارج هذه الغرف)*`);
       return;
@@ -5220,8 +5297,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       const targetChannelId = mentionMatch[1];
-      allowedChannels = [targetChannelId];
-      saveAllowedChannels(allowedChannels);
+      if (!message.guild) return;
+      setGuildAllowedChannels(message.guild.id, [targetChannelId]);
       await message.reply(`تم تفعيل البوت في <#${targetChannelId}>`);
       return;
     }
@@ -5279,11 +5356,9 @@ client.on("messageCreate", async (message) => {
           );
           return;
         }
-        if (allowedChannels.includes(targetChannelId)) {
-          allowedChannels = allowedChannels.filter(
-            (id) => id !== targetChannelId,
-          );
-          saveAllowedChannels(allowedChannels);
+        if (!message.guild) return;
+        const removed = removeGuildAllowedChannel(message.guild.id, targetChannelId);
+        if (removed) {
           await message.reply(
             `✅ تم إلغاء ارتباط البوت بنجاح عن الروم: <#${targetChannelId}>`,
           );
@@ -5337,8 +5412,13 @@ client.on("messageCreate", async (message) => {
       }
       return;
     }
-  } catch (error) {
-    console.error("Error:", error);
+  } catch (error: any) {
+    console.error("Error in messageCreate:", error);
+    if (error?.code === 50013) {
+      try {
+        await message.reply("⚠️ **خطأ في الصلاحيات:** البوت يفتقر إلى صلاحية **تضمين الروابط (Embed Links)** في هذا الروم لإظهار الواجهة البنكية.");
+      } catch (_) {}
+    }
   }
 });
 const port = process.env.PORT || 3e3;
