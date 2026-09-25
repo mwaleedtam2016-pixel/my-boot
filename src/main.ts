@@ -1410,6 +1410,223 @@ async function handleDailyCommand(target: Message | ChatInputCommandInteraction)
   await replyWithDailyReward(target, claim, profile.wallet);
 }
 
+async function handleInvestCommand(target: Message | ChatInputCommandInteraction, amount: number) {
+  const user = "author" in target ? target.author : target.user;
+  const profile = getUserProfile(user.id);
+
+  if (isNaN(amount) || amount <= 0) {
+    const errorMsg = "❌ الرجاء إدخال مبلغ صحيح وأكبر من الصفر.";
+    if ("reply" in target) {
+      await target.reply({ content: errorMsg, ephemeral: true } as any);
+    }
+    return;
+  }
+  if (amount < 5000) {
+    const errorMsg = "❌ **لا يمكن استثمار مبلغ أقل من 5,000 $!**";
+    if ("reply" in target) {
+      await target.reply({ content: errorMsg, ephemeral: true } as any);
+    }
+    return;
+  }
+  if (profile.wallet < amount) {
+    const errorMsg = `❌ **رصيدك في المحفظة غير كافٍ!** محفظتك تحتوي فقط على: \`${profile.wallet.toLocaleString("en-US")} $\``;
+    if ("reply" in target) {
+      await target.reply({ content: errorMsg, ephemeral: true } as any);
+    }
+    return;
+  }
+  if (activeSessions.has(user.id)) {
+    const errorMsg = "⚠️ **لديك عملية معلقة بالفعل!** يرجى إتمامها أو انتظار انتهائها أولاً.";
+    if ("reply" in target) {
+      await target.reply({ content: errorMsg, ephemeral: true } as any);
+    }
+    return;
+  }
+
+  activeSessions.add(user.id);
+  const embed = new EmbedBuilder()
+    .setColor(2829617)
+    .setAuthor({
+      name: user.username,
+      iconURL: user.displayAvatarURL(),
+    })
+    .setDescription(
+      [
+        `| **استثمار في الشركات العالمية**`,
+        ``,
+        `• **المبلغ المستثمر:** \`${amount.toLocaleString("en-US")} $\``,
+        `• يرجى اختيار الشركة التي ترغب بالاستثمار فيها من القائمة أدناه:`,
+      ].join("\n"),
+    )
+    .setTimestamp();
+
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId("invest_select_company")
+    .setPlaceholder("اختر الشركة للاستثمار")
+    .addOptions([
+      {
+        label: "أبل (Apple) 🍏",
+        value: "apple",
+        description: "الشركة الرائدة في مجال الأجهزة والهواتف الذكية",
+      },
+      {
+        label: "مايكروسوفت (Microsoft) 💻",
+        value: "microsoft",
+        description: "رائدة البرمجيات والأنظمة والذكاء الاصطناعي",
+      },
+      {
+        label: "تسلا (Tesla) 🚗",
+        value: "tesla",
+        description: "الشركة الأبرز في صناعة السيارات الكهربائية والطاقة",
+      },
+      {
+        label: "هواوي (Huawei) 📱",
+        value: "huawei",
+        description: "عملاق الاتصالات وشبكات 5G والتقنيات الذكية",
+      },
+      {
+        label: "جوجل (Google) 🌐",
+        value: "google",
+        description: "عملاق التكنولوجيا ومحركات البحث والذكاء الاصطناعي",
+      },
+      {
+        label: "أمازون (Amazon) 🛍️",
+        value: "amazon",
+        description: "رائد التجارة الإلكترونية والخدمات التقنية والسحابية",
+      },
+    ]);
+
+  const cancelBtn = new ButtonBuilder()
+    .setCustomId("invest_cancel")
+    .setLabel("إلغاء")
+    .setStyle(ButtonStyle.Danger);
+
+  const selectRow = new ActionRowBuilder<any>().addComponents(selectMenu);
+  const btnRow = new ActionRowBuilder<any>().addComponents(cancelBtn);
+
+  let responseMsg: any;
+  if ("reply" in target) {
+    responseMsg = await target.reply({
+      embeds: [embed],
+      components: [selectRow, btnRow],
+      fetchReply: true,
+    } as any);
+  }
+
+  const filter = (i: any) =>
+    (i.customId === "invest_select_company" ||
+      i.customId === "invest_cancel") &&
+    i.user.id === user.id;
+
+  const collector = responseMsg.createMessageComponentCollector({
+    filter,
+    time: 60000,
+  });
+
+  collector.on("collect", async (interaction: any) => {
+    if (interaction.customId === "invest_cancel") {
+      collector.stop("cancelled");
+      activeSessions.delete(user.id);
+      const cancelEmbed = new EmbedBuilder()
+        .setColor(16711680)
+        .setAuthor({
+          name: user.username,
+          iconURL: user.displayAvatarURL(),
+        })
+        .setDescription("❌ **تم إلغاء عملية الاستثمار.**")
+        .setTimestamp();
+      await interaction.update({ embeds: [cancelEmbed], components: [] });
+      return;
+    }
+
+    if (!interaction.isStringSelectMenu()) return;
+    const selectedCompany = interaction.values[0];
+    const companyNames: Record<string, string> = {
+      apple: "أبل (Apple) 🍏",
+      microsoft: "مايكروسوفت (Microsoft) 💻",
+      tesla: "تسلا (Tesla) 🚗",
+      huawei: "هواوي (Huawei) 📱",
+      google: "جوجل (Google) 🌐",
+      amazon: "أمازون (Amazon) 🛍️",
+    };
+
+    collector.stop("selected");
+    activeSessions.delete(user.id);
+    const isWin = Math.random() < 0.7;
+    const resultEmbed = new EmbedBuilder().setTimestamp();
+    profile.wallet -= amount;
+
+    if (isWin) {
+      const profitPercent = Math.floor(Math.random() * 41) + 10;
+      const profit = Math.round(amount * (profitPercent / 100));
+      const totalReturned = amount + profit;
+      profile.wallet += totalReturned;
+      resultEmbed
+        .setColor(65280)
+        .setAuthor({
+          name: user.username,
+          iconURL: user.displayAvatarURL(),
+        })
+        .setTitle("📈 استثمار ناجح وأرباح محققة!")
+        .setDescription(
+          [
+            `لقد قمت بالاستثمار في شركة **${companyNames[selectedCompany]}** بنجاح!`,
+            `حققت الشركة نتائج مالية استثنائية وارتفعت أسهمها في السوق العالمية.`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `• **المبلغ المستثمر:** \`${amount.toLocaleString("en-US")} $\``,
+            `• **نسبة الصعود:** \`+${profitPercent}%\``,
+            `• **الأرباح المحققة:** \`+${profit.toLocaleString("en-US")} $\``,
+            `• **المبلغ الكلي المسترد:** \`${totalReturned.toLocaleString("en-US")} $\``,
+            `👛 **رصيد محفظتك الحالي:** \`${profile.wallet.toLocaleString("en-US")} $\``,
+          ].join("\n"),
+        );
+    } else {
+      const lossPercent = Math.floor(Math.random() * 26) + 5;
+      const loss = Math.round(amount * (lossPercent / 100));
+      const totalReturned = amount - loss;
+      profile.wallet += totalReturned;
+      resultEmbed
+        .setColor(16711680)
+        .setAuthor({
+          name: user.username,
+          iconURL: user.displayAvatarURL(),
+        })
+        .setTitle("📉 تراجع في قيمة الاستثمار!")
+        .setDescription(
+          [
+            `لقد قمت بالاستثمار في شركة **${companyNames[selectedCompany]}**!`,
+            `تأثرت أسهم الشركة بتقلبات الأسواق العالمية مؤقتاً.`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `• **المبلغ المستثمر:** \`${amount.toLocaleString("en-US")} $\``,
+            `• **نسبة الهبوط:** \`-${lossPercent}%\``,
+            `• **الخسارة المترتبة:** \`-${loss.toLocaleString("en-US")} $\``,
+            `• **المبلغ المتبقي المسترد:** \`${totalReturned.toLocaleString("en-US")} $\``,
+            `👛 **رصيد محفظتك الحالي:** \`${profile.wallet.toLocaleString("en-US")} $\``,
+          ].join("\n"),
+        );
+    }
+    await interaction.update({ embeds: [resultEmbed], components: [] });
+  });
+
+  collector.on("end", async (collected: any, reason: string) => {
+    if (reason === "time") {
+      activeSessions.delete(user.id);
+      const timeoutEmbed = new EmbedBuilder()
+        .setColor(16711680)
+        .setAuthor({
+          name: user.username,
+          iconURL: user.displayAvatarURL(),
+        })
+        .setTitle("❌ انتهى وقت الجلسة")
+        .setDescription(
+          "انتهت الـ 60 ثانية دون اختيار أي شركة للاستثمار. تم إلغاء العملية.",
+        )
+        .setTimestamp();
+      await responseMsg.edit({ embeds: [timeoutEmbed], components: [] }).catch(() => {});
+    }
+  });
+}
+
 async function handleTimeInteraction(interaction: ChatInputCommandInteraction) {
   const commandsList = [
     { name: "عجلة", key: "عجلة" },
@@ -1617,8 +1834,16 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (cmd === "invest") {
+      const amount = interaction.options.getInteger("amount") || 0;
+      if (amount <= 0) {
+        await interaction.reply({
+          content: "⚠️ **طريقة الاستخدام:** `/invest amount: 10000` (الحد الأدنى 5,000 $)",
+          ephemeral: true,
+        });
+        return;
+      }
       if (!(await checkCooldown(interaction.user.id, "استثمار", interaction))) return;
-      await interaction.reply({ content: "📈 **للاستثمار في الأسهم، يرجى كتابة الأمر النصي:** `استثمار`" });
+      await handleInvestCommand(interaction, amount);
       return;
     }
 
@@ -5378,9 +5603,18 @@ client.on("messageCreate", async (message) => {
             })
             .setDescription(
               [
-                `| **استثمار**`,
+                `| **استثمار في الشركات**`,
                 ``,
                 `**طريقة الإستخدام :** \`استثمار\` \`المبلغ\``,
+                `*(مثال: \`استثمار 50000\`)*`,
+                ``,
+                `🏢 **الشركات المتاحة للاستثمار:**`,
+                `• 🍏 أبل (Apple)`,
+                `• 💻 مايكروسوفت (Microsoft)`,
+                `• 🚗 تسلا (Tesla)`,
+                `• 📱 هواوي (Huawei)`,
+                `• 🌐 جوجل (Google)`,
+                `• 🛍️ أمازون (Amazon)`,
               ].join("\n"),
             )
             .setTimestamp();
@@ -5393,193 +5627,8 @@ client.on("messageCreate", async (message) => {
         return;
       }
       const amount = parseInt(match[1], 10);
-      if (isNaN(amount) || amount <= 0) {
-        await message.reply("❌ الرجاء إدخال مبلغ صحيح وأكبر من الصفر.");
-        return;
-      }
-      if (amount < 5000) {
-        await message.reply("❌ **لا يمكن استثمار مبلغ أقل من 5,000 $!**");
-        return;
-      }
-      const profile = getUserProfile(message.author.id);
-      if (profile.wallet < amount) {
-        await message.reply(
-          "❌ رصيدك في المحفظة غير كافٍ لإجراء هذا الاستثمار.",
-        );
-        return;
-      }
-      if (activeSessions.has(message.author.id)) {
-        await message.reply(
-          "⚠️ **لديك عملية معلقة بالفعل!** يرجى إتمامها أو انتظار انتهائها أولاً.",
-        );
-        return;
-      }
       if (!(await checkCooldown(message.author.id, "استثمار", message))) return;
-      activeSessions.add(message.author.id);
-      const embed = new EmbedBuilder()
-        .setColor(2829617)
-        .setAuthor({
-          name: message.author.username,
-          iconURL: message.author.displayAvatarURL(),
-        })
-        .setDescription(
-          [
-            `| **استثمار**`,
-            ``,
-            `المبلغ :`,
-            `\`${amount.toLocaleString()}\``,
-          ].join("\n"),
-        )
-        .setTimestamp();
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId("invest_select_company")
-        .setPlaceholder("اختر الشركة")
-        .addOptions([
-          {
-            label: "جوجل (Google) 🌐",
-            value: "google",
-            description: "عملاق التكنولوجيا والذكاء الاصطناعي العالمي",
-          },
-          {
-            label: "مايكروسوفت (Microsoft) 💻",
-            value: "microsoft",
-            description: "رائدة البرمجيات والخدمات السحابية",
-          },
-          {
-            label: "أبل (Apple) 🍏",
-            value: "apple",
-            description: "الشركة الرائدة في مجال الأجهزة الذكية",
-          },
-          {
-            label: "تيسلا (Tesla) 🚗",
-            value: "tesla",
-            description: "الشركة الأبرز في صناعة السيارات الكهربائية والطاقة",
-          },
-          {
-            label: "أمازون (Amazon) 🛍️",
-            value: "amazon",
-            description: "رائد التجارة الإلكترونية والخدمات التقنية",
-          },
-        ]);
-      const cancelBtn = new ButtonBuilder()
-        .setCustomId("invest_cancel")
-        .setLabel("إلغاء")
-        .setStyle(ButtonStyle.Danger);
-      const selectRow = new ActionRowBuilder<any>().addComponents(
-        selectMenu,
-      );
-      const btnRow = new ActionRowBuilder<any>().addComponents(
-        cancelBtn,
-      );
-      const responseMsg = await message.reply({
-        embeds: [embed],
-        components: [selectRow, btnRow],
-      });
-      const filter = (i: any) =>
-        (i.customId === "invest_select_company" ||
-          i.customId === "invest_cancel") &&
-        i.user.id === message.author.id;
-      const collector = responseMsg.createMessageComponentCollector({
-        filter,
-        time: 60000,
-      });
-      collector.on("collect", async (interaction) => {
-        if (interaction.customId === "invest_cancel") {
-          collector.stop("cancelled");
-          activeSessions.delete(message.author.id);
-          const cancelEmbed = new EmbedBuilder()
-            .setColor(16711680)
-            .setAuthor({
-              name: message.author.username,
-              iconURL: message.author.displayAvatarURL(),
-            })
-            .setDescription("❌ **تم إلغاء عملية الاستثمار.**")
-            .setTimestamp();
-          await interaction.update({ embeds: [cancelEmbed], components: [] });
-          return;
-        }
-        if (!interaction.isStringSelectMenu()) return;
-        const selectedCompany = interaction.values[0];
-        const companyNames: Record<string, string> = {
-          google: "جوجل (Google)",
-          microsoft: "مايكروسوفت (Microsoft)",
-          apple: "أبل (Apple)",
-          tesla: "تيسلا (Tesla)",
-          amazon: "أمازون (Amazon)",
-        };
-        collector.stop("selected");
-        activeSessions.delete(message.author.id);
-        const isWin = Math.random() < 0.7;
-        const resultEmbed = new EmbedBuilder().setTimestamp();
-        profile.wallet -= amount;
-        if (isWin) {
-          const profitPercent = Math.floor(Math.random() * 41) + 10;
-          const profit = Math.round(amount * (profitPercent / 100));
-          const totalReturned = amount + profit;
-          profile.wallet += totalReturned;
-          resultEmbed
-            .setColor(65280)
-            .setAuthor({
-              name: message.author.username,
-              iconURL: message.author.displayAvatarURL(),
-            })
-            .setTitle("📈 استثمار ناجح وأرباح محققة!")
-            .setDescription(
-              [
-                `لقد قمت بالاستثمار في شركة **${companyNames[selectedCompany]}** بنجاح!`,
-                `حققت الشركة نتائج مالية استثنائية هذا الربع مما رفع قيمة أسهمها.`,
-                `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-                `• **المبلغ المستثمر:** \`${amount.toLocaleString("en-US")} $\``,
-                `• **نسبة الصعود:** \`+${profitPercent}%\``,
-                `• **الأرباح المحققة:** \`+${profit.toLocaleString("en-US")} $\``,
-                `• **المبلغ الكلي المسترد:** \`${totalReturned.toLocaleString("en-US")} $\``,
-                `👛 **رصيد محفظتك الحالي:** \`${profile.wallet.toLocaleString("en-US")} $\``,
-              ].join("\n"),
-            );
-        } else {
-          const lossPercent = Math.floor(Math.random() * 26) + 5;
-          const loss = Math.round(amount * (lossPercent / 100));
-          const totalReturned = amount - loss;
-          profile.wallet += totalReturned;
-          resultEmbed
-            .setColor(16711680)
-            .setAuthor({
-              name: message.author.username,
-              iconURL: message.author.displayAvatarURL(),
-            })
-            .setTitle("📉 تراجع في قيمة الاستثمار!")
-            .setDescription(
-              [
-                `لقد قمت بالاستثمار في شركة **${companyNames[selectedCompany]}**!`,
-                `تأثرت أسهم الشركة مؤقتاً بتقلبات السوق العالمي والاقتصاد.`,
-                `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-                `• **المبلغ المستثمر:** \`${amount.toLocaleString("en-US")} $\``,
-                `• **نسبة الهبوط:** \`-${lossPercent}%\``,
-                `• **الخسارة المترتبة:** \`-${loss.toLocaleString("en-US")} $\``,
-                `• **المبلغ المتبقي المسترد:** \`${totalReturned.toLocaleString("en-US")} $\``,
-                `👛 **رصيد محفظتك الحالي:** \`${profile.wallet.toLocaleString("en-US")} $\``,
-              ].join("\n"),
-            );
-        }
-        await interaction.update({ embeds: [resultEmbed], components: [] });
-      });
-      collector.on("end", async (collected, reason) => {
-        if (reason === "time") {
-          activeSessions.delete(message.author.id);
-          const timeoutEmbed = new EmbedBuilder()
-            .setColor(16711680)
-            .setAuthor({
-              name: message.author.username,
-              iconURL: message.author.displayAvatarURL(),
-            })
-            .setTitle("❌ انتهى وقت الجلسة")
-            .setDescription(
-              "انتهت الـ 60 ثانية دون اختيار أي شركة للاستثمار. تم إلغاء العملية.",
-            )
-            .setTimestamp();
-          await responseMsg.edit({ embeds: [timeoutEmbed], components: [] });
-        }
-      });
+      await handleInvestCommand(message, amount);
       return;
     }
     if (content.startsWith("تصفير")) {
