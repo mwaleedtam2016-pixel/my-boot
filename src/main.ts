@@ -681,10 +681,10 @@ client.once("ready", async () => {
         options: [
           {
             name: "channel1",
-            description: "الروم الأول المسموح به للعمليات البنكية",
+            description: "الروم الأول المسموح به (اختياري: تفعيل الروم الحالي تلقائياً إن لم يحدد)",
             type: 7,
             channel_types: [0],
-            required: true,
+            required: false,
           },
           {
             name: "channel2",
@@ -718,14 +718,14 @@ client.once("ready", async () => {
       },
       {
         name: "cancel-room",
-        description: "إلغاء تفعيل البوت في روم معين",
+        description: "إلغاء تفعيل البوت في روم معين (أو الروم الحالي)",
         options: [
           {
             name: "channel",
-            description: "الروم المراد إلغاء تفعيل البوت فيه",
+            description: "الروم المراد إلغاء تفعيل البوت فيه (اختياري: الروم الحالي)",
             type: 7,
             channel_types: [0],
-            required: true,
+            required: false,
           },
         ],
       },
@@ -1428,14 +1428,52 @@ client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     const cmd = interaction.commandName;
 
+    // Configuration and administrative commands must always be accessible in any channel
+    const isConfigCmd =
+      cmd === "abb-channel" ||
+      cmd === "cancel-room" ||
+      cmd === "choose-language";
+
+    if (isConfigCmd) {
+      const isConfigOwner =
+        interaction.user.id === interaction.guild?.ownerId ||
+        (interaction.memberPermissions &&
+          interaction.memberPermissions.has("Administrator"));
+      if (!isConfigOwner) {
+        await interaction.reply({
+          content:
+            "❌ **هذا الأمر مخصص لمدراء السيرفر فقط!** / ❌ **This command is for server administrators only!**",
+          ephemeral: true,
+        });
+        return;
+      }
+    }
+
     const guildId = interaction.guildId;
-    if (guildId && !isChannelAllowed(guildId, interaction.channelId)) {
-      const allowedList = getGuildAllowedChannels(guildId);
-      await interaction.reply({
-        content: `⚠️ **هذا الروم غير مفعل لأوامر البوت في هذا السيرفر.** يرجى استخدام أحد الرومات المفعلة: ${allowedList.map((id) => `<#${id}>`).join(" ، ")}`,
-        ephemeral: true,
-      });
-      return;
+    if (!isConfigCmd && guildId) {
+      let allowedList = getGuildAllowedChannels(guildId);
+      // Clean up deleted channels from the whitelist to avoid ghost "#unknown" entries
+      if (allowedList.length > 0 && interaction.guild) {
+        const validChannels = allowedList.filter((id) =>
+          interaction.guild?.channels.cache.has(id),
+        );
+        if (validChannels.length === 0 && interaction.guild.channels.cache.size > 0) {
+          // All configured channels were deleted in Discord -> auto-reset to allow all rooms
+          setGuildAllowedChannels(guildId, []);
+          allowedList = [];
+        } else if (validChannels.length !== allowedList.length) {
+          setGuildAllowedChannels(guildId, validChannels);
+          allowedList = validChannels;
+        }
+      }
+
+      if (allowedList.length > 0 && !allowedList.includes(interaction.channelId)) {
+        await interaction.reply({
+          content: `⚠️ **هذا الروم غير مفعل لأوامر البوت في هذا السيرفر.** يرجى استخدام أحد الرومات المفعلة: ${allowedList.map((id) => `<#${id}>`).join(" ، ")}`,
+          ephemeral: true,
+        });
+        return;
+      }
     }
 
     if (cmd === "wheel" || cmd === "ajil") {
@@ -1569,24 +1607,6 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    if (
-      cmd === "abb-channel" ||
-      cmd === "cancel-room" ||
-      cmd === "choose-language"
-    ) {
-      const isConfigOwner =
-        interaction.user.id === interaction.guild?.ownerId ||
-        (interaction.memberPermissions &&
-          interaction.memberPermissions.has("Administrator"));
-      if (!isConfigOwner) {
-        await interaction.reply({
-          content: "❌ **هذا الأمر مخصص لمدراء السيرفر فقط!** / ❌ **This command is for server administrators only!**",
-          ephemeral: true,
-        });
-        return;
-      }
-    }
-
     if (cmd === "abb-channel") {
       if (!interaction.guildId) {
         await interaction.reply({ content: "❌ هذا الأمر متاح داخل السيرفرات فقط.", ephemeral: true });
@@ -1597,12 +1617,34 @@ client.on("interactionCreate", async (interaction) => {
       const ch3 = interaction.options.getChannel("channel3");
       const ch4 = interaction.options.getChannel("channel4");
       const ch5 = interaction.options.getChannel("channel5");
-      const tempChannels = [];
+      let tempChannels: string[] = [];
       if (ch1) tempChannels.push(ch1.id);
       if (ch2) tempChannels.push(ch2.id);
       if (ch3) tempChannels.push(ch3.id);
       if (ch4) tempChannels.push(ch4.id);
       if (ch5) tempChannels.push(ch5.id);
+
+      // If no channels were explicitly specified, add the current channel to the allowed list
+      if (tempChannels.length === 0 && interaction.channelId) {
+        const currentAllowed = getGuildAllowedChannels(interaction.guildId);
+        // Clean up invalid or deleted channels first
+        const validAllowed = interaction.guild
+          ? currentAllowed.filter((id) => interaction.guild?.channels.cache.has(id))
+          : currentAllowed;
+
+        if (!validAllowed.includes(interaction.channelId)) {
+          if (validAllowed.length >= 5) {
+            await interaction.reply({
+              content: "❌ **خطأ:** الحد الأقصى للقنوات المفعلة هو 5 قنوات! يمكنك إلغاء تفعيل روم أولاً باستخدام `/cancel-room`.",
+              ephemeral: true,
+            });
+            return;
+          }
+          validAllowed.push(interaction.channelId);
+        }
+        tempChannels = validAllowed;
+      }
+
       setGuildAllowedChannels(interaction.guildId, tempChannels);
       const channelListString = tempChannels
         .map((id: any) => `<#${id}>`)
@@ -1619,12 +1661,16 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
       const ch = interaction.options.getChannel("channel");
-      if (!ch) return;
-      const targetChannelId = ch.id;
+      const targetChannelId = ch ? ch.id : interaction.channelId;
+      if (!targetChannelId) return;
       const removed = removeGuildAllowedChannel(interaction.guildId, targetChannelId);
       if (removed) {
+        const remaining = getGuildAllowedChannels(interaction.guildId);
+        const remainingStr = remaining.length > 0
+          ? `\n• الرومات المتبقية: ${remaining.map((id) => `<#${id}>`).join(" ، ")}`
+          : `\n*(تم إلغاء قيود الرومات، البوت يعمل الآن في جميع قنوات السيرفر)*`;
         await interaction.reply({
-          content: `✅ **تم إلغاء تفعيل البوت في الروم <#${targetChannelId}> بنجاح!**\n*(لن يستجيب البوت للأوامر هناك بعد الآن)*`,
+          content: `✅ **تم إلغاء تفعيل البوت في الروم <#${targetChannelId}> بنجاح!**${remainingStr}`,
         });
       } else {
         await interaction.reply({
